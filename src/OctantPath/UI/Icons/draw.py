@@ -42,13 +42,6 @@ def save(im, name):
     rgba.putalpha(a)
     rgba.save(f"{out}/{name}.png")
 
-# 取得: 下向きの矢印と、受ける台
-im, d = canvas()
-stroke(d, [(256, 72), (256, 342)])
-stroke(d, [(156, 242), (256, 342), (356, 242)])
-stroke(d, [(116, 422), (396, 422)])
-save(im, "download")
-
 # 入れ替え: 上は右へ、下は左へ
 im, d = canvas()
 stroke(d, [(100, 180), (400, 180)]); stroke(d, [(330, 110), (400, 180), (330, 250)])
@@ -100,6 +93,7 @@ shift = lambda pts: [(x - 30, y + 26) for x, y in pts]  # 回したあと、右�
 ring(d, shift(rotate(head, 40)), W - 6)
 stroke(d, shift(rotate([(256, 280 + W / 2), (256, 470)], 40)), W - 6)
 save(im, "pin")
+pin_im = im
 
 # 遊ぶ: 右向きの三角の輪郭（下見の行で、取得が済んだ曲の ↓ と入れ替わる。2026-10-22）。三角は重心が左に寄って見えるので、少し右に置く
 im, d = canvas()
@@ -142,3 +136,61 @@ ring(d, [(256, 84), (440, 404), (72, 404)])
 stroke(d, [(256, 196), (256, 304)])
 d.rectangle([256 - W / 2, 334, 256 + W / 2, 334 + W], fill=255)
 save(im, "status-waiting")
+
+# 浮かぶ板の上の段（文字のマスをアイコンに替えた。2026-11-09）。切り替えの絵は入でも切でも同じ絵で、入のときだけ青く灯り、下に点が付く
+# マスいっぱいに広げた押せる絵（clickable-image）に張るので、絵は真ん中に小さく描き、まわりを空けておく（押せる範囲はマス全体）
+# 上の段の絵はマス（高さ 5）の 0.78。マスを低くした分、絵は大きく（2026-11-10）
+def save_tile(im, name, scale=0.78):
+    size = int(S * scale)
+    small = im.resize((size, size), Image.LANCZOS)
+    padded = Image.new("L", (S, S), 0)
+    padded.paste(small, ((S - size) // 2, (S - size) // 2))
+    save(padded, name)
+
+# 保存: フロッピー（今の並びをプレイリストに残す。「開く」と取り違えにくい保存の記号）
+im, d = canvas()
+ring(d, [(96, 96), (356, 96), (416, 156), (416, 416), (96, 416)])
+ring(d, [(176, 96), (316, 96), (316, 176), (176, 176)], W - 8)
+ring(d, [(160, 290), (352, 290), (352, 416), (160, 416)], W - 8)
+save_tile(im, "save")
+
+# 自動で次へ: 右向きの三角と縦の線（次の曲へ）。三角は重心が左に寄って見えるので、全体を少し右に置く
+im, d = canvas()
+ring(d, [(124, 120), (330, 256), (124, 392)])
+stroke(d, [(396, 112), (396, 400)])
+save_tile(im, "auto-next")
+
+# 上限: 山（最近のクリアより難しい譜面を出さない）。輪郭は左の高い峰と右の低い峰
+im, d = canvas()
+ring(d, [(196, 100), (300, 300), (348, 236), (448, 412), (64, 412)])
+save_tile(im, "ceiling")
+
+# お試しの曲: 輪の付いたカレンダー（起動した日で消える）。残り日数は、中に大きく文字で重ねる（RecommendationTab ではなく TrialLamp）。
+# 角は丸める（尖った角だと窓や箱に見えた）。上の帯は引かず、中を数字に空ける（2026-11-10）。数字を大きく見せるため、ランプの 2 つは板に対して大きめ
+LampScale = 0.76
+im, d = canvas()
+# 線は他の絵より細め（太いと中の数字が負けて見えた。2026-11-10）
+CalendarW = W - 10
+d.rounded_rectangle([60, 100, 452, 460], radius=76, outline=255, width=CalendarW)
+stroke(d, [(172, 48), (172, 146)], CalendarW)
+stroke(d, [(340, 48), (340, 146)], CalendarW)
+save_tile(im, "trial", LampScale)
+
+# 残した曲: 丸にチェック（次の起動で CustomLevels に移る）
+im, d = canvas()
+d.ellipse([60, 60, 452, 452], outline=255, width=W)
+stroke(d, [(160, 262), (232, 334), (360, 190)], W + 4)
+save_tile(im, "kept", LampScale)
+
+# 固定と移動の切り替え（上の段のマスいっぱいに張る版）
+save_tile(pin_im, "pin-tile")
+
+# 近道の印: 下向きの山形（押すと下に推薦の板が開く）
+im, d = canvas()
+stroke(d, [(112, 176), (256, 320), (400, 176)], W + 6)
+save(im, "chevron-down")
+
+# 切り替えが入っている印の点
+im, d = canvas()
+d.ellipse([156, 156, 356, 356], fill=255)
+save(im, "dot")

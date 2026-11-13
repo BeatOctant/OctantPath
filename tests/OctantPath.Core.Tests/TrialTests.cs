@@ -64,6 +64,96 @@ namespace OctantPath.Core.Tests
         }
     }
 
+    public class TrialLampTests
+    {
+        private static readonly string H = new string('b', 40);
+        private static readonly DateTime Acquired = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc);
+
+        private static TrialPolicy Policy(HashSet<string> liked = null, Dictionary<string, string> votes = null) =>
+            new TrialPolicy(liked ?? new HashSet<string>(), votes ?? new Dictionary<string, string>(), new List<SignalEvent>(), new[] { Acquired.ToLocalTime().Date.ToString("yyyy-MM-dd") }, 3, 15);
+
+        private static OwnedMap Map(bool keep = false, string state = MapStates.Trial) => new OwnedMap { Hash = H, AcquiredAt = Acquired, State = state, KeepRequested = keep };
+
+        [Fact]
+        public void HidesTheLampForMapsOctantPathDoesNotHoldAsATrial()
+        {
+            Assert.Equal(TrialLampKind.None, TrialLampState.For(null, Policy(), 15).Kind);
+            Assert.Equal(TrialLampKind.None, TrialLampState.For(Map(state: MapStates.Kept), Policy(), 15).Kind);
+        }
+
+        [Fact]
+        public void ATrialCanBeKeptByPressing()
+        {
+            var lamp = TrialLampState.For(Map(), Policy(), 15);
+            Assert.Equal(TrialLampKind.Trial, lamp.Kind);
+            Assert.True(lamp.CanToggle);
+            Assert.True(lamp.KeepAfterToggle);
+            Assert.Equal(1, lamp.LaunchDays);
+        }
+
+        [Fact]
+        public void AKeepTheUserPressedCanBeUndone()
+        {
+            var lamp = TrialLampState.For(Map(keep: true), Policy(), 15);
+            Assert.Equal(TrialLampKind.Keeping, lamp.Kind);
+            Assert.True(lamp.CanToggle);
+            Assert.False(lamp.KeepAfterToggle);
+        }
+
+        [Fact]
+        public void HidesTheLampWhenAFavoriteKeepsTheMapAnyway()
+        {
+            var liked = new HashSet<string> { H };
+            Assert.Equal(TrialLampKind.None, TrialLampState.For(Map(), Policy(liked: liked), 15).Kind);
+            // 自分で残したあとにお気に入りに入れても、戻しても残るので出さない
+            Assert.Equal(TrialLampKind.None, TrialLampState.For(Map(keep: true), Policy(liked: liked), 15).Kind);
+            Assert.Equal(TrialDecision.Keep, Policy(liked: liked).Decide(Map(keep: true)).Decision);
+        }
+
+        [Fact]
+        public void ReadsTheVotesBeatSaverVotingWrote()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "octantpath-votes-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                Assert.Empty(VotedSongs.Read(path));
+                File.WriteAllText(path, JsonConvert.SerializeObject(new Dictionary<string, object> { [H.ToUpperInvariant()] = new { hash = H, voteType = "Upvote" }, ["x"] = 1 }));
+                var votes = VotedSongs.Read(path);
+                Assert.Equal(SignalTypes.Upvote, votes[H]);
+                Assert.Equal(TrialKeepCause.Upvote, Policy(votes: votes).Evaluate(Map()).Cause);
+                Assert.Equal(TrialLampKind.None, TrialLampState.For(Map(), Policy(votes: votes), 15).Kind);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void AVoteOfAnotherShapeIsAnErrorNotSkipped()
+        {
+            // 読み飛ばすと Upvote した曲がお試しの期限で消える。読めないなら、片付けは何も消さない
+            var path = Path.Combine(Path.GetTempPath(), "octantpath-votes-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                File.WriteAllText(path, JsonConvert.SerializeObject(new Dictionary<string, object> { [H] = "Upvote" }));
+                Assert.Throws<InvalidDataException>(() => VotedSongs.Read(path));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void PressingKeepsADownvotedTrial()
+        {
+            var votes = new Dictionary<string, string> { [H] = SignalTypes.Downvote };
+            Assert.Equal(TrialLampKind.Trial, TrialLampState.For(Map(), Policy(votes: votes), 15).Kind);
+            Assert.Equal(TrialDecision.Keep, Policy(votes: votes).Decide(Map(keep: true)).Decision);
+        }
+    }
+
     public class JanitorTests : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "octantpath-janitor-" + Guid.NewGuid().ToString("N"));
@@ -234,6 +324,37 @@ namespace OctantPath.Core.Tests
             Run();
             Assert.True(Directory.Exists(Path.Combine(_paths.CustomLevels, "k1 (Song - Mapper)")));
             Assert.Equal(MapStates.Kept, Ledger().State);
+        }
+
+        [Fact]
+        public void MovesAMapTheUserChoseToKeep()
+        {
+            Assert.True(new OwnershipLedger(_paths.Root).SetKeepRequested(_hash, true));
+            Assert.True(Ledger().KeepRequested);
+            Run();
+            Assert.True(Directory.Exists(Path.Combine(_paths.CustomLevels, "k1 (Song - Mapper)")));
+            Assert.Equal(MapStates.Kept, Ledger().State);
+        }
+
+        [Fact]
+        public void KeepsNothingAfterTheUserUndidTheKeep()
+        {
+            var ledger = new OwnershipLedger(_paths.Root);
+            ledger.SetKeepRequested(_hash, true);
+            ledger.SetKeepRequested(_hash, false);
+            Assert.False(Ledger().KeepRequested);
+            Assert.DoesNotContain("keepRequested", File.ReadAllText(Path.Combine(_paths.Root, OwnershipLedger.FileName)));
+            Run();
+            Assert.True(Directory.Exists(MapFolder));
+            Assert.Equal(MapStates.Trial, Ledger().State);
+        }
+
+        [Fact]
+        public void TheKeepMarkIsOnlyForTrials()
+        {
+            Vote("Upvote");
+            Run();
+            Assert.False(new OwnershipLedger(_paths.Root).SetKeepRequested(_hash, true));
         }
 
         [Fact]

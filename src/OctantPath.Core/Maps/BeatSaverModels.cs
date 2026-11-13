@@ -42,7 +42,6 @@ namespace OctantPath.Core.Maps
     {
         [JsonProperty("characteristic")] public string Characteristic { get; set; }
         [JsonProperty("difficulty")] public string Difficulty { get; set; }
-        [JsonProperty("nps")] public double Nps { get; set; }
         [JsonProperty("njs")] public double Njs { get; set; }
     }
 }

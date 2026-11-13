@@ -302,15 +302,7 @@ namespace OctantPath.Core.Trials
             }
             try
             {
-                foreach (var p in JObject.Parse(File.ReadAllText(_paths.VotedSongs)).Properties())
-                {
-                    var hash = MapHash.Normalize(p.Name);
-                    var type = (string)p.Value["voteType"];
-                    if (hash != null && (type == "Upvote" || type == "Downvote"))
-                    {
-                        votes[hash] = type == "Upvote" ? SignalTypes.Upvote : SignalTypes.Downvote;
-                    }
-                }
+                votes = VotedSongs.Read(_paths.VotedSongs);
             }
             catch (Exception ex)
             {

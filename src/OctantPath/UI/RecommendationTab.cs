@@ -21,8 +21,8 @@ namespace OctantPath.UI
     // 順は OctantCompass が返した順のまま出す
     internal sealed class RecommendationTab : NotifiableBase, IInitializable, ITickable, IDisposable
     {
-        // 板の大きさ（UI の単位）。並びの一覧を出すときと出さないとき（既定）で変わる
-        private UnityEngine.Vector2 PanelSize => new UnityEngine.Vector2(120f, (ListVisible ? 62f : 36f) + Core.UI.HomeTiles.Height + 1f);
+        // 板の大きさ（UI の単位）。並びの一覧を出すときと出さないとき（既定）で変わる。RecommendationTab.bsml の段の高さを足したもの
+        private UnityEngine.Vector2 PanelSize => ListVisible ? new UnityEngine.Vector2(120f, 60.2f) : new UnityEngine.Vector2(74f, 22.4f);
 
         // 板に並びの一覧（とそれを操作する「取得」「全部」）を出すか。作成したミックスは曲選択のプレイリストで見えるので、既定では出さない
         [UIValue("list-visible")]
@@ -48,9 +48,8 @@ namespace OctantPath.UI
         private readonly PanelPlacement _placement;
         private bool _pinned = true;
         private readonly SettingsMenu _settingsMenu;
+        private readonly TrialLamp _trialLamp;
 
-        // 板の曲がり（曲選択の画面と同じ半径。CreatePanel）。持ち手を板の手前に出すのに使う
-        private float _panelRadius;
         // 板を作ったときの画面（曲選択か OctantPath の設定ページ）。置き直すときの最初の位置はこの画面のすぐ上
         private HMUI.Screen _panelScreen;
 
@@ -125,10 +124,6 @@ namespace OctantPath.UI
             Plugin.Log.Debug($"[popup] {what} plate radius {stretched:0.##} -> {radius:0.##} (multiplier {plate.pixelsPerUnitMultiplier:0.##})");
         }
 
-        private const float PinPlateSize = 7f;
-
-        // 推薦のカードの裏に敷く黒の濃さ（推測で決めた値。2026-10-16 にもう少し濃くと言われた）
-        private const float HomeTileBacking = 0.45f;
 
         // 小窓の外周の枠線: ゲームの枠の sprite を Sliced で張る。見つからなければ出さない。押下は受けない
         private void DrawPopupFrames()
@@ -155,7 +150,7 @@ namespace OctantPath.UI
 
         // 小窓の中の説明（hover-hint）を小窓の前に出す。ゲームは説明の板を、Canvas と ScreenBase を両方持つ親（画面）の子にして出す
         // （HMUI の HoverHintController.GetScreenTransformForHoverHint）。小窓は自分の Canvas で画面より前に描く（BSML の FixModalBlockerLayer）ので、
-        // 説明が小窓の裏に隠れた（下見の行の ↓・-・⇔ など。2026-10-30）。小窓に ScreenBase（中身のない印）を付けて、説明を小窓の子にする
+        // 説明が小窓の裏に隠れた（下見の行の ▶・-・⇔ など。2026-10-30）。小窓に ScreenBase（中身のない印）を付けて、説明を小窓の子にする
         private void RaiseModalHints()
         {
             foreach (var modal in new[] { _choiceModal, _draftModal })
@@ -213,12 +208,6 @@ namespace OctantPath.UI
         [UIValue("draft-cells")]
         private List<object> _draftCells = new List<object>();
 
-        [UIObject("home-row")]
-        private UnityEngine.GameObject _homeRow;
-
-        [UIObject("home-row-2")]
-        private UnityEngine.GameObject _homeRow2;
-
         [UIComponent("draft-list")]
         private CustomCellListTableData _draftList;
 
@@ -251,14 +240,13 @@ namespace OctantPath.UI
         // 下見で選んでいる曲（板の並びの選択とは別）と、下見の小窓に出す文
         private RecommendationItem _draftSelected;
         private string _draftMessage = "";
-        private bool _draftFromSong;
 
         [UIValue("draft-title")]
         public string DraftTitle => _draft == null ? (_busy ? Lang.T("mix.making") : "") : Lang.T("draft.title", new { name = TypeName(_draftPreset, _draftChoiceLabel) });
 
         [UIValue("draft-seed")]
         // 起点を使わない種類（おすすめなど。OctantCompass へ起点を送らない）では、起点の行は空にする
-        public string DraftSeed => _draftFromSong && _mixUsesSeed && _mixLabel != null ? Lang.T("seed.from", new { song = _mixLabel }) : "";
+        public string DraftSeed => _mixUsesSeed && _mixLabel != null ? Lang.T("seed.from", new { song = _mixLabel }) : "";
 
         // 今作っている（作った）種類が起点を使うか。PresetRules.Request が起点を送るかと同じ
         private bool _mixUsesSeed;
@@ -267,7 +255,7 @@ namespace OctantPath.UI
         private Preset _draftingPreset;
 
         [UIValue("choice-seed")]
-        public string ChoiceSeed => _seed != null ? Lang.T("seed.from", new { song = _seedLabel }) : Lang.T("seed.noneChoice");
+        public string ChoiceSeed => _seed != null ? Lang.T("seed.from", new { song = _seedLabel }) : _songText != null ? Lang.T("choice.seedUnusable") : Lang.T("seed.noneChoice");
 
         [UIObject("choice-tiles")]
         private UnityEngine.GameObject _choiceGrid;
@@ -379,7 +367,7 @@ namespace OctantPath.UI
         [UIValue("draft-detail")]
         public string DraftDetail => _draftMessage;
 
-        // 作成中（取得から曲選択を開き直すまで）。小窓は開いたまま進み具合を見せる
+        // 下見の帯を見せている間。「作成」では取得から曲選択を開き直すまで、▶ では 1 曲を取得している間。小窓は開いたまま進み具合を見せる
         private bool _creating;
 
         [UIObject("progress-track")]
@@ -477,6 +465,7 @@ namespace OctantPath.UI
             }
             _draftMessage = text;
             NotifyPropertyChanged(nameof(DraftDetail));
+            NotifyStatus();
         }
 
         [UIValue("draft-idle")]
@@ -488,6 +477,9 @@ namespace OctantPath.UI
         [UIAction("draft-close")]
         private void DraftClose()
         {
+            // 自分で閉じた下見は、その曲をまた遊んでも開き直さない
+            _draftResumeHash = null;
+            _draftResumeArmed = false;
             _preview.Stop();
             _preview.StopPrefetch();
             _parserParams?.EmitEvent("hide-draft");
@@ -502,7 +494,7 @@ namespace OctantPath.UI
             MixClick();
         }
 
-        // 下見の小窓の左上の戻る: ひとつ前の小窓へ。choice の入力がある種類はその選択へ、なければ種類の小窓へ（ホームからなら閉じるだけ）
+        // 下見の小窓の左上の戻る: ひとつ前の小窓へ。choice の入力がある種類はその選択へ、なければ種類の小窓へ
         [UIAction("draft-back")]
         private void DraftBack()
         {
@@ -518,16 +510,13 @@ namespace OctantPath.UI
             {
                 _menuPresets = null;
                 _parserParams?.EmitEvent("show-choice");
-                PresetChosen(preset, _draftFromSong);
+                PresetChosen(preset);
                 return;
             }
-            if (_draftFromSong)
-            {
-                MixClick();
-            }
+            MixClick();
         }
 
-        // 種類の小窓の左上の戻る: choice を選んでいる途中ならひとつ前の選択へ、曲の画面から種類を選んだなら種類の一覧へ、それ以外は閉じる
+        // 種類の小窓の左上の戻る: choice を選んでいる途中ならひとつ前の選択へ、種類を選んだあとなら種類の一覧へ、それ以外は閉じる
         [UIAction("choice-back")]
         private void ChoiceBack()
         {
@@ -538,7 +527,7 @@ namespace OctantPath.UI
                 ShowNextChoice();
                 return;
             }
-            if (_choosing != null && _draftFromSong)
+            if (_choosing != null)
             {
                 MixClick();
                 return;
@@ -619,6 +608,7 @@ namespace OctantPath.UI
 
         private void NotifyDraft()
         {
+            NotifyStatus();
             NotifyPropertyChanged(nameof(DraftTitle));
             NotifyPropertyChanged(nameof(DraftSeed));
             NotifyPropertyChanged(nameof(DraftDetail));
@@ -639,8 +629,8 @@ namespace OctantPath.UI
                 return;
             }
             var items = _draft != null ? _draft.Picked.ToList() : new List<RecommendationItem>();
-            var actions = new DraftCell.Actions { Swap = ReplaceItem, Discard = DiscardItem, Download = DownloadOne, Play = PlayDraftItem };
-            _draftCells = items.Select(i => (object)new DraftCell(i, i == _draftSelected, !_busy, CanDownloadDraft(i), CanPlayDraft(i), DraftState, _covers, actions)).ToList();
+            var actions = new DraftCell.Actions { Swap = ReplaceItem, Discard = DiscardItem, Play = PlayDraftItem };
+            _draftCells = items.Select(i => (object)new DraftCell(i, i == _draftSelected, !_busy, CanPlayDraft(i), DraftState, _covers, actions)).ToList();
             // 一番下に「曲を足す」の行（並べられる上限までは出す。入れ替え用が尽きていれば、押したときに追加を受け取る）
             if (_draft != null && !_draft.Full)
             {
@@ -733,7 +723,6 @@ namespace OctantPath.UI
         private readonly ResultsPanel _resultsPanel;
 
         // ユーザーが曲選択でミックスの外の曲を選んでいる
-        private bool _offMix;
         private readonly GameScenesManager _gameScenesManager;
         private readonly PlaylistSync _playlist;
         private bool _busy;
@@ -742,9 +731,10 @@ namespace OctantPath.UI
         [UIComponent("list")]
         private CustomListTableData _list;
 
-        public RecommendationTab(RecommendationService recommendations, DownloadService downloads, [InjectOptional] StandardLevelDetailViewController levelDetail, ConnectionService connection, CoverCache covers, Signals.SignalService signals, Trials.TrialService trials, Installers.SettingsHolder settingsHolder, PreviewPlayer preview, PanelPlacement placement, GameScenesManager gameScenesManager, PlaylistSync playlist, SettingsMenu settingsMenu)
+        public RecommendationTab(RecommendationService recommendations, DownloadService downloads, [InjectOptional] StandardLevelDetailViewController levelDetail, ConnectionService connection, CoverCache covers, Signals.SignalService signals, Trials.TrialService trials, Installers.SettingsHolder settingsHolder, PreviewPlayer preview, PanelPlacement placement, GameScenesManager gameScenesManager, PlaylistSync playlist, SettingsMenu settingsMenu, TrialLamp trialLamp)
         {
             _settingsMenu = settingsMenu;
+            _trialLamp = trialLamp;
             _gameScenesManager = gameScenesManager;
             _playlist = playlist;
             _placement = placement;
@@ -757,7 +747,7 @@ namespace OctantPath.UI
             _downloads = downloads;
             _levelDetail = levelDetail;
             _connection = connection;
-            _resultsPanel = new ResultsPanel(covers, preview, ChooseFromResults, () => PanelScale, () => _settingsHolder.Current.PanelOpacity, PanelBottom, MovePanelBottom, () => !_pinned);
+            _resultsPanel = new ResultsPanel(covers, preview, ChooseFromResults, PreviewedFromResults, () => _ = ShowOtherResultsAsync(), () => PanelScale, () => _settingsHolder.Current.PanelOpacity);
         }
 
         public void Initialize()
@@ -815,8 +805,8 @@ namespace OctantPath.UI
             var rect = (UnityEngine.RectTransform)screen.transform;
             var (position, rotation, radius) = Placement(screen, true);
 
-            _panel = BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen.CreateFloatingScreen(PanelSize, true, position, rotation, radius, true);
-            _panelRadius = radius;
+            // 背景は、並びの一覧を出すときだけ敷く。出さないときはボタンのマスそのもので板の形を作る（2026-11-03）
+            _panel = BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen.CreateFloatingScreen(PanelSize, true, position, rotation, radius, ListVisible);
             _panelScreen = screen;
             _panel.name = "OctantPathRecommendations";
             _panel.transform.localScale = UnityEngine.Vector3.one * PanelScale;
@@ -826,19 +816,37 @@ namespace OctantPath.UI
             PanelLook.PaintKnob(_panel);
             _panel.ShowHandle = false;
             _panel.HandleReleased += HandlePanelReleased;
-            PanelLook.MakeTranslucent(_panel, _settingsHolder.Current.PanelOpacity);
+            if (ListVisible)
+            {
+                PanelLook.MakeTranslucent(_panel, _settingsHolder.Current.PanelOpacity);
+            }
             BeatSaberMarkupLanguage.BSMLParser.Instance.Parse(Lang.Fill(BeatSaberMarkupLanguage.Utilities.GetResourceContent(typeof(RecommendationTab).Assembly, "OctantPath.UI.RecommendationTab.bsml")), _panel.gameObject, this);
             _panel.gameObject.SetActive(false);
-            // 固定のボタンの板も、戻るボタンと同じ角にする（大きさは RecommendationTab.bsml の 7 x 7）
-            SharpenPlate(_pinPlate, new UnityEngine.Vector2(PinPlateSize, PinPlateSize), "pin");
-            SharpenPlate(_resetPlate, new UnityEngine.Vector2(PinPlateSize, PinPlateSize), "reset");
-            SharpenPlate(_autoNextPlate, AutoNextPlateSize, "auto-next");
-            SharpenPlate(_ceilingPlate, CeilingPlateSize, "ceiling");
-            ShowAutoNext();
-            ShowCeiling();
-            BuildHomeButtons();
+            // マスの角: 板全体の外側の角（左上・右上・左下・右下）だけを丸め、マスどうしが接する内側の角は尖らせる（2026-11-03）
+            PanelLook.ShapeCorners(_savePlate, TileCornerRadius, true, false, false, false);
+            PanelLook.ShapeCorners(_autoNextPlate, TileCornerRadius, false, false, false, false);
+            PanelLook.ShapeCorners(_ceilingPlate, TileCornerRadius, false, false, false, false);
+            PanelLook.ShapeCorners(_topGapPlate, TileCornerRadius, false, false, false, false);
+            PanelLook.ShapeCorners(_pinPlate, TileCornerRadius, false, true, false, false);
+            PanelLook.ShapeCorners(_songPlate, TileCornerRadius, false, false, false, false);
+            for (var i = 0; i < ShortcutPlates.Length; i++)
+            {
+                PanelLook.ShapeCorners(ShortcutPlates[i], TileCornerRadius, false, false, i == 0, i == ShortcutPlates.Length - 1);
+            }
+            PanelLook.ShapeCorners(_statusPlate, TileCornerRadius, false, false, true, true);
+            if (_songLabel != null)
+            {
+                _songLabel.margin = new UnityEngine.Vector4(SongRowPad, 0f, SongRowLampSpace, 0f);
+            }
+            AddSongAccent();
+            if (_songRow != null)
+            {
+                _trialLamp.CreatePanelLamp(_songRow);
+            }
+            ReadSeedAndNotify();
+            PaintTiles();
             FillList();
-            AddStartMixButton();
+            AddPopups();
             Plugin.Log.Debug($"[panel] created at {position} above the song list screen at {rect.position} (radius {radius})");
         }
 
@@ -864,18 +872,17 @@ namespace OctantPath.UI
             return (position, rotation, radius);
         }
 
-        // 曲の詳細（アルバムアートの板）の左上に「ミックス」（記号 ♪）を置く。PLAY の並びは混んでいてはみ出したので、
-        // 並びの外に、レイアウトに加わらない形で重ねる（PLAY の動きは変えない）
-        private void AddStartMixButton()
+        // 中央の画面（曲の詳細）に重ねる小窓（種類を選ぶ小窓、知らせ、下見の小窓）を置く。
+        // 曲の詳細そのものには何も重ねない（種類を選ぶ入口とランプは浮かぶ板の曲の行に移した。2026-11-08）
+        private void AddPopups()
         {
             try
             {
                 if (_levelDetail == null)
                 {
-                    Plugin.Log.Warn("[startmix] the level detail was not found; the type popup and the button are not added");
+                    Plugin.Log.Warn("[popups] the level detail was not found; the type popup is not added");
                     return;
                 }
-                // 種類の小窓をこの画面（中央）に置く
                 _parserParams = BeatSaberMarkupLanguage.BSMLParser.Instance.Parse(Lang.Fill(ChoiceModalBsml), _levelDetail.gameObject, this);
                 DrawPopupFrames();
                 RaiseModalHints();
@@ -884,37 +891,12 @@ namespace OctantPath.UI
                 PanelLook.Brighten(_progressFill);
                 ShowCreateTrack();
                 FitChoiceScroll();
-                var view = _levelDetail.GetComponentsInChildren<StandardLevelDetailView>(true).FirstOrDefault();
-                if (view == null)
-                {
-                    Plugin.Log.Warn("[startmix] the level detail view was not found");
-                    return;
-                }
-                var host = new StartMixButton(MixClick);
-                BeatSaberMarkupLanguage.BSMLParser.Instance.Parse(Lang.Fill("<button id='button' text='♪' on-click='click' font-size='4.5' hover-hint='{{songButton.hint}}'/>"), view.gameObject, host);
-                if (host.Button == null)
-                {
-                    return;
-                }
-                var layout = host.Button.GetComponent<UnityEngine.UI.LayoutElement>() ?? host.Button.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
-                layout.ignoreLayout = true;
-                var rect = (UnityEngine.RectTransform)host.Button.transform;
-                rect.anchorMin = new UnityEngine.Vector2(0f, 1f);
-                rect.anchorMax = new UnityEngine.Vector2(0f, 1f);
-                rect.pivot = new UnityEngine.Vector2(0f, 1f);
-                rect.anchoredPosition = new UnityEngine.Vector2(StartMixOffset.x, -StartMixOffset.y);
-                rect.sizeDelta = StartMixSize;
-                Plugin.Log.Debug($"[startmix] added at the top left of {view.name} ({((UnityEngine.RectTransform)view.transform).rect.size})");
             }
             catch (Exception ex)
             {
-                Plugin.Log.Error($"[startmix] could not add the button: {ex}");
+                Plugin.Log.Error($"[popups] could not be added: {ex}");
             }
         }
-
-        // アルバムアートの左上からの位置と大きさ（UI の単位。推測で決めた値）
-        private static readonly UnityEngine.Vector2 StartMixOffset = new UnityEngine.Vector2(2f, 2f);
-        private static readonly UnityEngine.Vector2 StartMixSize = new UnityEngine.Vector2(7f, 7f);
 
         // 曲選択（ソロの曲の一覧）が出ている間だけ板を出す
         public void Tick()
@@ -985,15 +967,15 @@ namespace OctantPath.UI
             if (_panel != null)
             {
                 _panel.transform.localScale = UnityEngine.Vector3.one * PanelScale;
-                PanelLook.MakeTranslucent(_panel, _settingsHolder.Current.PanelOpacity);
+                if (ListVisible)
+                {
+                    PanelLook.MakeTranslucent(_panel, _settingsHolder.Current.PanelOpacity);
+                }
             }
             _resultsPanel.Rescale();
-            ShowAutoNext();
-            ShowCeiling();
+            PaintTiles();
+            NotifyStatus();
         }
-
-        [UIComponent("pin-plate")]
-        private HMUI.ImageView _pinPlate;
 
         [UIValue("pin-hint")]
         public string PinHint => Lang.T(_pinned ? "panel.move" : "panel.pin") + ": " + Lang.T("panel.pinHint");
@@ -1007,19 +989,14 @@ namespace OctantPath.UI
                 _panel.ShowHandle = !_pinned;
             }
             NotifyPropertyChanged(nameof(PinHint));
-            NotifyPropertyChanged(nameof(ResetVisible));
+            NotifyStatus();
+            NotifyPropertyChanged(nameof(StatusHint));
+            ShowPin();
         }
 
-        [UIComponent("reset-plate")]
-        private HMUI.ImageView _resetPlate;
-
-        // 置き直すボタンは、移動にしている間だけピンの左に出す（2026-10-24）
-        [UIValue("reset-visible")]
-        public bool ResetVisible => !_pinned;
 
         // 板を最初の位置（作ったときの画面のすぐ上）へ戻し、残した置き場所を消す
-        [UIAction("reset-click")]
-        private void ResetClick()
+        private void ResetPlacement()
         {
             if (_panel == null || _panelScreen == null)
             {
@@ -1037,50 +1014,107 @@ namespace OctantPath.UI
             Plugin.Log.Debug($"[panel] moved to {args.Position}");
         }
 
-        // 結果画面の板は、この板と下の縁をそろえて置く（同じ向き・同じ曲がり方）。この板がまだなければ null
-        private PanelBase? PanelBottom()
+        // 板の知らせ。何かする必要があること（失敗）と、ほかの画面では見えないこと（お試しの曲が新しく入った）だけを出す。
+        // 進み具合と成功は出さない（進み具合は中央の小窓に出て、成功は曲選択の画面で見える。2026-11-03）。
+        // 下の段を押すと、板の操作の知らせとお試しの曲の知らせは消す（消した文は覚えない）。signal の送信が止まった知らせは、
+        // 止まっている間ずっと出す（スコアが送られていないことを隠さない。2026-11-03）
+        private string Notice => new[] { _message, _signals.Problem, _trials.Status }.FirstOrDefault(t => !string.IsNullOrEmpty(t));
+
+        // 下の段: 移動にしている間は「最初の位置に戻す」、知らせがあれば知らせ、押したことが済んだ直後の数秒はその結果（Flash）、
+        // どれもなければ OctantCompass との接続の状態（色付き）。結果も出さないと、できたのかが分からなかった。
+        // 作成や取得の進み具合は中央の小窓に出ているので、ここには出さない（2026-11-03）
+        [UIValue("status-text")]
+        public string StatusRowText => !_pinned ? Lang.T("panel.putBack")
+            : Notice != null ? Core.UI.PanelStatus.Clip(Notice, Core.UI.PanelStatus.NoticeWidth)
+            : !string.IsNullOrEmpty(_flash) ? Core.UI.PanelStatus.Clip(_flash, Core.UI.PanelStatus.NoticeWidth)
+            : _connection.Status.State != Core.Connection.ConnectionState.Ready ? Core.Connection.StatusText.Colored(_connection.Status)
+            : Core.UI.PanelStatus.Clip(_connection.PresetsProblem ?? Lang.T("presets.none"), Core.UI.PanelStatus.NoticeWidth);
+
+        // 下の段に文を出すか（出さないときは推薦の近道）。つながっていて知らせもなければ、何も書かずに近道を出す
+        // （「接続済」は曲のことではないのに曲の行の近くに出て、紛らわしかった。2026-11-08）
+        [UIValue("status-visible")]
+        public bool StatusVisible => !_pinned || Notice != null || !string.IsNullOrEmpty(_flash)
+            || _connection.Status.State != Core.Connection.ConnectionState.Ready || _shortcuts.Count == 0;
+
+        [UIValue("shortcuts-visible")]
+        public bool ShortcutsVisible => !StatusVisible;
+
+        // 下の段を描き直す（文か近道か、近道の中身）
+        private void NotifyStatus()
         {
-            if (_panel == null)
-            {
-                return null;
-            }
-            var t = _panel.transform;
-            return new PanelBase(t.position - t.up * (_panel.ScreenSize.y * t.lossyScale.y / 2f), t.rotation, _panelRadius);
+            ResolveShortcuts();
+            NotifyPropertyChanged(nameof(StatusRowText));
+            NotifyPropertyChanged(nameof(StatusVisible));
+            NotifyPropertyChanged(nameof(ShortcutsVisible));
+            PaintShortcuts();
         }
 
-        // 結果画面の板を動かした: この板も、下の縁がそこに来るように動かし、置き場所を覚える
-        private void MovePanelBottom(UnityEngine.Vector3 bottom, UnityEngine.Quaternion rotation)
+        // 済んだことの短い知らせ。下の段に数秒だけ出して、接続の状態に戻す
+        private string _flash;
+        private int _flashId;
+
+        private async void Flash(string text, float seconds = 3f)
         {
-            if (_panel == null)
+            _flash = text;
+            NotifyStatus();
+            var id = ++_flashId;
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(seconds), _lifetime.Token);
+            }
+            catch (OperationCanceledException)
             {
                 return;
             }
-            var t = _panel.transform;
-            var center = bottom + rotation * UnityEngine.Vector3.up * (_panel.ScreenSize.y * t.lossyScale.y / 2f);
-            t.SetPositionAndRotation(center, rotation);
-            _placement.Save(center, rotation);
-            Plugin.Log.Debug($"[panel] moved with the results panel to {center}");
-        }
-
-        [UIValue("header-text")]
-        public string HeaderText
-        {
-            get
+            if (id == _flashId)
             {
-                var mix = _mix == null ? SeedText
-                    : _offMix ? Lang.T("mix.offMix", new { song = _mixLabel })
-                    : Lang.T("mix.playing", new { mix = MixName(), filter = FilterName(_mix.Filter) });
-                return $"{ConnectionText}\n{mix}";
+                _flash = null;
+                NotifyStatus();
             }
         }
 
-        public string ConnectionText => $"OctantCompass: {Core.Connection.StatusText.Describe(_connection.Status)}" + (_signals.Problem != null ? $"\n{_signals.Problem}" : "") + (string.IsNullOrEmpty(_trials.Status) ? "" : $"  {_trials.Status}");
+        [UIValue("status-hint")]
+        public string StatusHint => Lang.T(_pinned ? "panel.refreshHint" : "panel.resetHint");
 
-        public string SeedText => _seed != null ? Lang.T("seed.from", new { song = _seedLabel }) : Lang.T("seed.nonePick");
+        private bool _refreshing;
+
+        // 下の段を押した: 移動中なら最初の位置へ戻す。そうでなければ知らせを消して、接続を確かめ直す（別のボタンは置かない。2026-11-03）。
+        // ペアリングは設定の「OctantCompass との接続」で行う
+        [UIAction("status-click")]
+        private async void StatusClick()
+        {
+            if (!_pinned)
+            {
+                ResetPlacement();
+                return;
+            }
+            _message = "";
+            _trials.ClearStatus();
+            NotifyStatus();
+            if (_refreshing)
+            {
+                return;
+            }
+            _refreshing = true;
+            try
+            {
+                await _connection.RefreshNowAsync().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Warn($"[panel] could not check the connection again: {ex.Message}");
+            }
+            finally
+            {
+                _refreshing = false;
+                NotifyStatus();
+            }
+        }
 
         [UIValue("mix-interactable")]
         public bool MixInteractable => !_busy && _mix != null;
 
+        // 並びの一覧を出すときだけ: 一覧で選んでいる曲（曲名 / アーティスト [譜面作者] と難易度）
         [UIValue("detail-text")]
         public string DetailText
         {
@@ -1089,13 +1123,11 @@ namespace OctantPath.UI
                 var item = _selected;
                 if (item == null)
                 {
-                    return _items.Count == 0 ? _message : $"{_message}\n{Lang.T("mix.listHint")}";
+                    return "";
                 }
-                var views = item.Candidate.Reason?.Views;
-                var viewText = views == null ? "" : string.Join("  ", views.Select(v => $"{v.Key} {v.Value.ToString("0.00", CultureInfo.InvariantCulture)}"));
                 var difficulty = item.Candidate.Reason?.Difficulty;
                 var aim = difficulty?.ClearChance != null ? "  " + Lang.T("item.clearChance", new { chance = difficulty.ClearChance.Value.ToString("P0", CultureInfo.InvariantCulture) }) : "";
-                return $"{Core.UI.DisplayText.Line(item.Title)} / {Core.UI.DisplayText.Line(item.Artist)} [{Core.UI.DisplayText.Line(item.Mapper)}]  {Lang.T("item.suggested", new { characteristic = item.Candidate.Characteristic, difficulty = item.Candidate.Difficulty })}{aim}\n{_message}";
+                return Core.UI.PanelStatus.Clip($"{Core.UI.DisplayText.Line(item.Title)} / {Core.UI.DisplayText.Line(item.Artist)} [{Core.UI.DisplayText.Line(item.Mapper)}]  {Lang.T("item.suggested", new { characteristic = item.Candidate.Characteristic, difficulty = item.Candidate.Difficulty })}{aim}", Core.UI.PanelStatus.NoticeWidth);
             }
         }
 
@@ -1120,12 +1152,14 @@ namespace OctantPath.UI
 
         private void HandleContentChanged(StandardLevelDetailViewController controller, StandardLevelDetailViewController.ContentType type) => ReadSeedAndNotify();
 
-        private void HandleConnectionChanged(Core.Connection.ConnectionStatus status) => NotifyPropertyChanged(nameof(HeaderText));
+        private void HandleConnectionChanged(Core.Connection.ConnectionStatus status)
+        {
+            NotifyStatus();
+        }
 
-        private void HandleSignalProblemChanged() => NotifyPropertyChanged(nameof(HeaderText));
+        private void HandleSignalProblemChanged() => NotifyStatus();
 
         // 置いたものを確かめると「置いた」の印が消えるので、ミックスの並び・板の一覧・下見の行の「導入済み」を付け直す
-        // （下見の行を付け直さないと、取った曲に ↓ が戻った）
         private void HandleDownloadsChanged()
         {
             var shown = (_mix?.All ?? Enumerable.Empty<RecommendationItem>()).Concat(_items).Concat(_draft?.Seen ?? Enumerable.Empty<RecommendationItem>());
@@ -1144,27 +1178,29 @@ namespace OctantPath.UI
             try
             {
                 ReadSeed();
-                if (_mix != null && _selected != null)
-                {
-                    _offMix = _seed != null && _seed.Hash != _selected.Hash;
-                }
             }
             catch (Exception ex)
             {
                 Plugin.Log.Warn($"could not read the selected chart: {ex.Message}");
                 _seed = null;
+                _songText = null;
             }
-            NotifyPropertyChanged(nameof(HeaderText));
+            NotifyPropertyChanged(nameof(SongText));
+            NotifyStatus();
         }
 
         private void ReadSeed()
         {
             _seed = null;
+            _songText = null;
             var level = _levelDetail != null ? _levelDetail.beatmapLevel : null;
             if (level == null)
             {
                 return;
             }
+            var mappers = level.allMappers != null && level.allMappers.Length > 0 ? $" [{Core.UI.DisplayText.Line(string.Join(", ", level.allMappers))}]" : "";
+            var chart = _levelDetail.beatmapKey.beatmapCharacteristic != null ? "  " + Core.Maps.DifficultyLabel.Chart(_levelDetail.beatmapKey.beatmapCharacteristic.serializedName, _levelDetail.beatmapKey.difficulty.ToString()) : "";
+            _songText = (Core.UI.DisplayText.Line(level.songName), Core.UI.DisplayText.Line(level.songAuthorName) + mappers + chart);
             var hash = Core.Maps.MapHash.Normalize(SongCore.Collections.GetCustomLevelHash(level.levelID));
             if (hash == null)
             {
@@ -1199,97 +1235,254 @@ namespace OctantPath.UI
             _choiceInputs = null;
             // 起点が要る種類は、譜面を選んでいないときは押せない
             var groups = presets.Any(p => !string.IsNullOrEmpty(p.Group)) ? presets.Select(p => p.Group).ToList() : null;
-            ShowTiles(presets.Select(p => (p.Label, PresetRules.NeedsSeed(p) && _seed == null ? Lang.T("choice.needsSeed") : p.Hint, !(PresetRules.NeedsSeed(p) && _seed == null))).ToList(), groups);
+            ShowTiles(presets.Select(p => (p.Label, SeedBlocked(p) ? SeedBlockedHint : p.Hint, !SeedBlocked(p))).ToList(), groups);
             NotifyPropertyChanged(nameof(ChoiceSeed));
             _parserParams?.EmitEvent("show-choice");
         }
 
         private List<Preset> ShownPresets() => PresetRules.Shown(_connection.Presets?.Presets, true);
 
-        private void HandlePresetsChanged()
+        private void HandlePresetsChanged() => Notify();
+
+        // 曲の行: 選んでいる曲（曲名と、作者 [譜面作者] 難易度）。行ごと押すと種類の小窓が出る（♪ の印は、行を押せば足りるので置かない。2026-11-08）
+        private (string Title, string Meta)? _songText;
+
+        [UIValue("song-text")]
+        public string SongText
         {
-            BuildHomeButtons();
-            Notify();
+            get
+            {
+                if (_songText == null)
+                {
+                    return Lang.T("panel.noSong");
+                }
+                // 起点にできない曲は、2 行目を短い一文に替える（長い説明は幅 40 で途中で切れた。理由は灰色のマスの説明に出る。2026-11-08）
+                var meta = _seed == null ? Lang.T("choice.seedUnusable") : _songText.Value.Meta;
+                return $"{Core.UI.PanelStatus.Clip(_songText.Value.Title, SongTitleWidth)}\n<size=75%><color=#BBBBBB>{Core.UI.PanelStatus.Clip(meta, SongMetaWidth)}</color></size>";
+            }
         }
 
-        // ホームのボタンを一覧から作り直す。並びは OctantCompass の返した順のまま。文字は縮めずに 2 行に分けて並べる
-        private void BuildHomeButtons()
+        // 曲の行の文字の幅の目安（半角 1、全角 2。推測で決めた値: 幅 61 のマスに、大きさ 3 で約 30、その 75% で約 40）
+        private const int SongTitleWidth = 32;
+        private const int SongMetaWidth = 40;
+
+        [UIValue("song-hint")]
+        public string SongHint => Lang.T("panel.songHint");
+
+        [UIAction("song-click")]
+        private void SongClick() => MixClick();
+
+        [UIComponent("song-plate")]
+        private HMUI.ImageView _songPlate;
+
+        // 曲の行（ランプは TrialLamp がこの右端に置く）と、その文。文の左右の余白（UI の単位）。右はランプ（7）の分をあける
+        [UIObject("song-row")]
+        private UnityEngine.GameObject _songRow;
+
+        [UIComponent("song-label")]
+        private ClickableText _songLabel;
+
+        private const float SongRowPad = 3.5f;
+
+        // 曲の行の左端の青い縦線。板が寂しく見えたので、行に締まりを出す（2026-11-08）。
+        // 手札一覧の再生中の帯（DraftCell の playing-bar）と同じ太さ・色：角のない四角で、行の高さいっぱい。左端に隙間を空けずに付ける
+        // 曲の行の地（song-plate）を写して作り、並び（stack）には加えずに左端に置く
+        private const float SongAccentWidth = 0.8f;
+        private static readonly UnityEngine.Color SongAccentColor = new UnityEngine.Color32(0x4C, 0x9A, 0xFF, 0xFF);
+
+        private void AddSongAccent()
         {
-            if (_homeRow == null || _homeRow2 == null)
+            if (_songRow == null || _songPlate == null)
             {
                 return;
             }
-            foreach (var row in new[] { _homeRow, _homeRow2 })
+            try
             {
-                foreach (UnityEngine.Transform child in row.transform)
-                {
-                    UnityEngine.Object.Destroy(child.gameObject);
-                }
+                var line = UnityEngine.Object.Instantiate(_songPlate.gameObject, _songRow.transform, false);
+                line.name = "OctantPathSongAccent";
+                var layout = line.GetComponent<UnityEngine.UI.LayoutElement>() ?? line.AddComponent<UnityEngine.UI.LayoutElement>();
+                layout.ignoreLayout = true;
+                var rect = (UnityEngine.RectTransform)line.transform;
+                rect.anchorMin = new UnityEngine.Vector2(0f, 0f);
+                rect.anchorMax = new UnityEngine.Vector2(0f, 1f);
+                rect.pivot = new UnityEngine.Vector2(0f, 0.5f);
+                rect.sizeDelta = new UnityEngine.Vector2(SongAccentWidth, 0f);
+                rect.anchoredPosition = UnityEngine.Vector2.zero;
+                var image = line.GetComponent<HMUI.ImageView>();
+                image.sprite = DraftCell.SquareSprite();
+                image.type = UnityEngine.UI.Image.Type.Simple;
+                image.gradient = false;
+                image.color = SongAccentColor;
+                image.raycastTarget = false;
+                // 文の下に描く（文を押せなくしない）
+                line.transform.SetSiblingIndex(1);
             }
-            var presets = PresetRules.Shown(_connection.Presets?.Presets, false);
-            // 先頭は「ミックス」（選んでいる曲を起点にした種類を選ぶ）。ほかの推薦と同じカードにする
-            var tiles = new List<(string Label, string Hint, Action Click, string Id)> { (Lang.T("mix.tile"), Lang.T("mix.tileHint"), (Action)MixClick, "mix") };
-            tiles.AddRange(presets.Select(p => (p.Label, p.Hint, (Action)(() => HomeClick(p)), p.Id)));
-            var layout = Core.UI.HomeTiles.Arrange(tiles.Select(t => t.Label).ToList());
-            for (var i = 0; i < tiles.Count; i++)
+            catch (Exception ex)
             {
-                var tile = tiles[i];
-                try
-                {
-                    Tile.Create(layout.RowOf[i] == 0 ? _homeRow : _homeRow2, tile.Label, layout.Widths[i], Core.UI.HomeTiles.Height, tile.Click, fontSize: layout.FontSize, hint: tile.Hint, backing: HomeTileBacking);
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.Error($"[home] could not make the tile for {tile.Id}: {ex}");
-                }
+                Plugin.Log.Warn($"[panel] could not add the song row line: {ex.Message}");
             }
-            Plugin.Log.Info($"[home] {presets.Count} tiles: {string.Join(", ", presets.Select(p => p.Id))} (scale {layout.Scale:0.##})");
         }
+        private const float SongRowLampSpace = 8f;
 
-        // ホームのボタン: 起点なしで、中央の小窓に下見を出す（choice の入力があれば先に選ばせる）
-        private void HomeClick(Preset preset)
+        // 推薦の近道: 下の段の手札 3 つ（Core.UI.Shortcuts）。押すと、選んでいる曲を起点にその手札で下見を出す
+        private List<Preset> _shortcuts = new List<Preset>();
+
+        [UIComponent("shortcut-0-plate")] private HMUI.ImageView _shortcut0Plate;
+        [UIComponent("shortcut-1-plate")] private HMUI.ImageView _shortcut1Plate;
+        [UIComponent("shortcut-2-plate")] private HMUI.ImageView _shortcut2Plate;
+        [UIComponent("shortcut-0-label")] private ClickableText _shortcut0Label;
+        [UIComponent("shortcut-1-label")] private ClickableText _shortcut1Label;
+        [UIComponent("shortcut-2-label")] private ClickableText _shortcut2Label;
+
+        private HMUI.ImageView[] ShortcutPlates => new[] { _shortcut0Plate, _shortcut1Plate, _shortcut2Plate };
+        private ClickableText[] ShortcutLabels => new[] { _shortcut0Label, _shortcut1Label, _shortcut2Label };
+
+        [UIComponent("shortcut-0-mark")] private HMUI.ImageView _shortcut0Mark;
+        [UIComponent("shortcut-1-mark")] private HMUI.ImageView _shortcut1Mark;
+        [UIComponent("shortcut-2-mark")] private HMUI.ImageView _shortcut2Mark;
+
+        private HMUI.ImageView[] ShortcutMarks => new[] { _shortcut0Mark, _shortcut1Mark, _shortcut2Mark };
+
+        // 近道の名前の右の下向きの山形（押すと下に推薦の板が開く。2026-11-09）。大きさと、名前との隙間（UI の単位）
+        private const float ShortcutMarkSize = 1.6f;
+        private const float ShortcutMarkGap = 0.7f;
+
+        // 山形を名前の右に置く。名前は真ん中寄せのまま、右の余白（margin）で山形の分だけ左へ寄せ、名前と山形の組を真ん中に見せる
+        private static void PlaceShortcutMark(ClickableText label, HMUI.ImageView mark, UnityEngine.Color color)
         {
-            if (_busy || ToastIfUnavailable())
+            if (label == null || mark == null)
             {
                 return;
             }
-            _menuPresets = null;
-            if (PresetRules.Choices(preset).Count > 0)
+            var room = ShortcutMarkSize + ShortcutMarkGap;
+            label.margin = new UnityEngine.Vector4(0f, 0f, room, 0f);
+            var width = string.IsNullOrEmpty(label.text) ? 0f : label.GetPreferredValues(label.text).x;
+            var room0 = label.rectTransform.rect.width - room;
+            if (room0 > 0f)
             {
+                width = UnityEngine.Mathf.Min(width, room0);
+            }
+            var layout = mark.GetComponent<UnityEngine.UI.LayoutElement>() ?? mark.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            layout.ignoreLayout = true;
+            var rect = mark.rectTransform;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new UnityEngine.Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new UnityEngine.Vector2(ShortcutMarkSize, ShortcutMarkSize);
+            // 名前の真ん中は -room / 2。その右端から隙間をあけて山形の真ん中
+            rect.anchoredPosition = new UnityEngine.Vector2(-room / 2f + width / 2f + ShortcutMarkGap + ShortcutMarkSize / 2f, 0f);
+            mark.raycastTarget = false;
+            mark.color = color;
+            mark.gameObject.SetActive(!string.IsNullOrEmpty(label.text));
+        }
+
+        // 近道の手札の名前の幅の目安（半角 1、全角 2。推測で決めた値）
+        private const int ShortcutLabelWidth = 14;
+
+        private void ResolveShortcuts()
+        {
+            var settings = _settingsHolder.Current;
+            var shown = _connection.Presets != null ? ShownPresets() : new List<Preset>();
+            _shortcuts = Core.UI.Shortcuts.Resolve(settings.ShortcutPresets, settings.RecentPresets, shown);
+        }
+
+        // 近道のマスに手札の名前と説明を入れる。起点が要る手札は、曲を選んでいないと灰色にする（押すと知らせる）
+        private void PaintShortcuts()
+        {
+            var plates = ShortcutPlates;
+            var labels = ShortcutLabels;
+            for (var i = 0; i < labels.Length; i++)
+            {
+                var preset = i < _shortcuts.Count ? _shortcuts[i] : null;
+                if (plates[i] != null)
+                {
+                    plates[i].color = TileColor();
+                }
+                var label = labels[i];
+                if (label == null)
+                {
+                    continue;
+                }
+                label.text = preset == null ? "" : Core.UI.PanelStatus.Clip(preset.Label, ShortcutLabelWidth);
+                var usable = preset != null && !_busy && !SeedBlocked(preset);
+                label.DefaultColor = usable ? TileText : TileDisabledText;
+                label.color = label.DefaultColor;
+                PlaceShortcutMark(label, ShortcutMarks[i], label.DefaultColor);
+                var hint = label.GetComponent<HMUI.HoverHint>();
+                if (hint != null)
+                {
+                    hint.text = preset == null ? "" : SeedBlocked(preset) ? SeedBlockedHint : preset.Hint ?? preset.Label;
+                }
+            }
+        }
+
+        [UIAction("shortcut-0-click")] private void Shortcut0Click() => ShortcutClick(0);
+        [UIAction("shortcut-1-click")] private void Shortcut1Click() => ShortcutClick(1);
+        [UIAction("shortcut-2-click")] private void Shortcut2Click() => ShortcutClick(2);
+
+        private void ShortcutClick(int index)
+        {
+            if (_busy || index >= _shortcuts.Count || ToastIfUnavailable())
+            {
+                return;
+            }
+            ReadSeed();
+            var preset = _shortcuts[index];
+            if (SeedBlocked(preset))
+            {
+                Toast(SeedBlockedMessage);
+                return;
+            }
+            Plugin.Log.Info($"[shortcut] {preset.Id}");
+            PresetChosen(preset);
+            // choice の入力がある手札は、種類の小窓で続けて選ばせる（PresetChosen が小窓の中身を替える）
+            if (_choosing == preset)
+            {
+                NotifyPropertyChanged(nameof(ChoiceSeed));
                 _parserParams?.EmitEvent("show-choice");
             }
-            PresetChosen(preset, false);
+        }
+
+        // 今は押せない手札か。起点が必須なのに起点がない。または、起点を任意で使う手札（似た曲など）なのに、選んでいる曲が起点にできない
+        // （オリジナル曲など）。後者は起点なしでも動くが、遊んだ履歴から選ぶことになり、選んでいる曲に似た曲だと思って押すと食い違う（2026-11-08）
+        private bool SeedBlocked(Preset preset) =>
+            _seed == null && (PresetRules.NeedsSeed(preset) || (_songText != null && PresetRules.UsesSeed(preset)));
+
+        private string SeedBlockedHint => _songText != null ? Lang.T("choice.seedUnusable") : Lang.T("choice.needsSeed");
+
+        // 押せない手札を押したときの知らせ。マスの説明（SeedBlockedHint）と同じ理由を出す（2026-11-08）
+        private string SeedBlockedMessage => _songText != null ? Lang.T("choice.seedUnusable") : Lang.T("choice.needsSeedFirst");
+
+        // 手札を使った: 最近使ったものの先頭に置く（近道の空いた枠を埋める）
+        private void RememberPreset(Preset preset)
+        {
+            var recent = Core.UI.Shortcuts.Touch(_settingsHolder.Current.RecentPresets, preset?.Id);
+            if (!recent.SequenceEqual(_settingsHolder.Current.RecentPresets ?? new List<string>()))
+            {
+                _settingsHolder.Save("recentPresets", new Newtonsoft.Json.Linq.JArray(recent));
+            }
         }
 
         // 種類を選んだ: 起点は今選んでいる譜面（起点を使わない種類でも、あれば覚えておく）。choice の入力があれば続けて選ばせる
-        private void PresetChosen(Preset preset) => PresetChosen(preset, true);
-
-        private void PresetChosen(Preset preset, bool fromSong)
+        private void PresetChosen(Preset preset)
         {
             if (_busy)
             {
                 return;
             }
-            if (!fromSong)
-            {
-                // ホームから: 曲を起点にしない
-                _mixSeed = null;
-                _mixLabel = null;
-            }
-            if (fromSong && PresetRules.NeedsSeed(preset) && _seed == null)
+            if (SeedBlocked(preset))
             {
                 _parserParams?.EmitEvent("hide-choice");
-                _message = Lang.T("choice.needsSeedFirst");
+                _message = SeedBlockedMessage;
                 Notify();
                 return;
             }
-            if (fromSong && _seed != null)
-            {
-                _mixSeed = _seed;
-                _mixLabel = _seedLabel;
-            }
+            // 起点は今選んでいる譜面だけ。選んでいなければ、前に選んでいた曲を起点に残さない（ホームの手札が消したのと同じ）
+            _mixSeed = _seed;
+            _mixLabel = _seed != null ? _seedLabel : null;
+            // 種類の一覧の小窓を外を押して閉じると、一覧（_menuPresets）が残る。残ったままだと、この手札の choice を選んだときに
+            // 一覧の別の手札が始まる
+            _menuPresets = null;
+            RememberPreset(preset);
             var choices = PresetRules.Choices(preset);
-            _draftFromSong = fromSong;
             _mixUsesSeed = PresetRules.UsesSeed(preset);
             _draftingPreset = preset;
             if (choices.Count == 0)
@@ -1372,7 +1565,7 @@ namespace OctantPath.UI
             _draftSelected = null;
             _draftMessage = "";
             FillDraftList();
-            SetBusy(true, Lang.T("mix.making"));
+            SetBusy(true, "");
             try
             {
                 var draftCount = Core.Mix.MixDraftRules.Size(_settingsHolder.Current.MixDraftCount);
@@ -1439,7 +1632,6 @@ namespace OctantPath.UI
             // 選んだだけでは取らない。入っている曲（前もって置いたものを含む）は曲選択で選び、ほかは試聴だけを流す
             _selected = item;
             _mix?.Select(item);
-            _offMix = false;
             if (item.Installed || _downloads.IsPlaced(item.Hash) || _downloads.IsInFlight(item.Hash))
             {
                 _ = PlayItemAsync(item);
@@ -1449,7 +1641,7 @@ namespace OctantPath.UI
             {
                 _preview.Play(item.Version.PreviewUrl);
             }
-            _message = Lang.T(_downloads.IsAvailable(item) ? "item.previewing" : "item.unavailable");
+            _message = _downloads.IsAvailable(item) ? "" : Lang.T("item.unavailable");
             FillList();
             Notify();
         }
@@ -1469,44 +1661,8 @@ namespace OctantPath.UI
         // 下見の行の状態の文
         private string DraftState(RecommendationItem i) => i.Installed ? "  " + Lang.T("item.installed") : _downloads.IsInFlight(i.Hash) ? "  " + Lang.T("item.downloading") : _downloads.IsPlaced(i.Hash) ? "  " + Lang.T("item.downloaded") : _downloads.IsAvailable(i) ? "" : "  " + Lang.T("item.cannotDownload");
 
-        // 下見の 1 曲だけを先に取得する。ユーザーが選んだ取得なので「手動」の枠で台帳に残す。
-        // 曲選択の読み直しはしない（作成するときか、次に読み直すときにまとめる）
-        private async void DownloadOne(RecommendationItem item)
-        {
-            if (item == null || _busy || item.Installed || _downloads.IsInFlight(item.Hash))
-            {
-                return;
-            }
-            _draftMessage = Lang.T("item.downloadingTitle", new { title = item.Title });
-            NotifyDraft();
-            FillDraftList();
-            try
-            {
-                var outcomes = await _downloads.InstallManyAsync(new[] { item }, Core.Maps.FrameEntry.Manual, false, _lifetime.Token);
-                var outcome = outcomes?.FirstOrDefault();
-                _draftMessage = outcome == null ? Lang.T("download.notWhilePlaying") : outcome.Error != null ? Lang.T("download.failed", new { error = outcome.Error }) : Lang.T("item.downloadedTitle", new { title = item.Title });
-                if (outcome != null && outcome.Error == null)
-                {
-                    _signals.RecordRecommendation(item.RequestId, item.Preset, item.Candidate.Reason?.Hand, item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, "selected");
-                }
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.Error(ex);
-                _draftMessage = Lang.T("download.failed", new { error = ex.Message });
-            }
-            FillDraftList();
-            NotifyDraft();
-        }
-
-        // 下見の行の ↓: 入っておらず、置いてもおらず、取っている途中でもなく、今の取得元から取れる
-        private bool CanDownloadDraft(RecommendationItem i) => !_busy && !i.Installed && !_downloads.IsPlaced(i.Hash) && !_downloads.IsInFlight(i.Hash) && _downloads.IsAvailable(i);
-
-        // 下見の行の ▶（↓ と同じ場所）: 入っているか、置いてある（押したら読み直して選ぶ）
-        private bool CanPlayDraft(RecommendationItem i) => !_busy && !_downloads.IsInFlight(i.Hash) && (i.Installed || _downloads.IsPlaced(i.Hash));
+        // 下見の行の ▶ を押せるか。取得中の曲でなければ、ゲームに入っている曲・取得済みの曲・これから取得できる曲のどれでも押せる
+        private bool CanPlayDraft(RecommendationItem i) => !_busy && !_downloads.IsInFlight(i.Hash) && (i.Installed || _downloads.IsPlaced(i.Hash) || _downloads.IsAvailable(i));
 
         // 下見の曲の試聴を、並んだ順に先読みする（選んだ曲を取り終えてから 1 曲ずつ）。下見が閉じるか変わったらやめる
         private void PrefetchDraftPreviews()
@@ -1520,7 +1676,9 @@ namespace OctantPath.UI
             _preview.Prefetch(urls, () => draft == _draft && _draftModal != null && _draftModal.isShown);
         }
 
-        // 下見の 1 曲だけを遊ぶ: 置いてあれば読み直してから、曲選択でその曲を選ぶ（PLAY はユーザーが押す）。
+        // 下見の行の ▶ を押したとき。その曲がゲームに入っていなければ、取得して（取得済みならそのまま）ゲームに読み込ませ、
+        // 曲選択でその曲を選ぶ（PLAY はユーザーが押す）。取得するときは進み具合を下見の帯に出す。
+        // ユーザーが選んで取った曲なので、台帳には「手動」の枠で残す。
         // 下見の小窓は閉じるが下見は残し、その曲を遊んで曲選択に戻ったら小窓を開き直す（TickAdvance）
         private async void PlayDraftItem(RecommendationItem item)
         {
@@ -1529,16 +1687,31 @@ namespace OctantPath.UI
                 return;
             }
             var draft = _draft;
+            var recorded = false;
             if (!item.Installed)
             {
-                SetBusy(true, null);
-                _draftMessage = Lang.T("item.loadingTitle", new { title = item.Title });
+                var download = !_downloads.IsPlaced(item.Hash);
+                if (download)
+                {
+                    // 「作成」と同じ帯を使う
+                    _creating = true;
+                    StartCreateProgress(1);
+                }
+                SetBusy(true, "");
+                _draftMessage = Lang.T(download ? "item.downloadingTitle" : "item.loadingTitle", new { title = item.Title });
                 NotifyDraft();
                 try
                 {
-                    // 置いてあるので取らない。読み直して、譜面が読めたかを確かめる
-                    var outcomes = await _downloads.InstallManyAsync(new[] { item }, Core.Maps.FrameEntry.Manual, true, _lifetime.Token);
+                    // 取得したら（取得済みなら取らずに）ゲームに読み込ませ、譜面が読めたかを確かめる
+                    var outcomes = await _downloads.InstallManyAsync(new[] { item }, Core.Maps.FrameEntry.Manual, true, _lifetime.Token,
+                        received: (got, fraction) => _createReceived[got.Hash] = fraction);
+                    FinishCreateDownloads();
                     var outcome = outcomes?.FirstOrDefault();
+                    if (outcome != null && outcome.Path != null)
+                    {
+                        _signals.RecordRecommendation(item.RequestId, item.Preset, item.Candidate.Reason?.Hand, item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, "selected");
+                        recorded = true;
+                    }
                     if (outcome == null || outcome.Error != null || !item.Installed)
                     {
                         _draftMessage = outcome == null ? Lang.T("download.notWhilePlaying") : Lang.T("download.failed", new { error = outcome.Error ?? Lang.T("download.notLoaded") });
@@ -1557,6 +1730,11 @@ namespace OctantPath.UI
                 }
                 finally
                 {
+                    if (download)
+                    {
+                        _creating = false;
+                        ShowCreateTrack();
+                    }
                     SetBusy(false, null);
                     NotifyDraft();
                 }
@@ -1569,11 +1747,21 @@ namespace OctantPath.UI
             _preview.Stop();
             _preview.StopPrefetch();
             HideModals();
-            _draftResumeHash = item.Hash;
-            _draftResumeArmed = false;
             var selected = SongSelect.Select(item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, null);
+            // 選べた曲だけ、遊び終えたら下見を開き直す
+            _draftResumeHash = selected ? item.Hash : null;
+            _draftResumeArmed = false;
+            if (selected && !recorded)
+            {
+                // 入っていた曲は取得の分岐を通らないので、ここで記録する
+                _signals.RecordRecommendation(item.RequestId, item.Preset, item.Candidate.Reason?.Hand, item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, "selected");
+            }
             SongSelect.RedrawCovers(new[] { item.Hash });
-            _message = Lang.T(selected ? "select.done" : "select.failed");
+            _message = selected ? "" : Lang.T("select.failed");
+            if (selected)
+            {
+                Flash(Lang.T("status.selected"));
+            }
             Plugin.Log.Info($"[mix] playing {item.Hash} from the draft (selected={selected})");
             Notify();
         }
@@ -1730,7 +1918,7 @@ namespace OctantPath.UI
             _creating = true;
             StartCreateProgress(targets.Count);
             SetProgress(0, targets.Count, targets.Count > 0 ? Lang.T("create.downloading", new { done = 0, total = targets.Count }) : Lang.T("create.makingPlaylist"));
-            SetBusy(true, _draftMessage);
+            SetBusy(true, "");
             // 受け取った割合が何回届いたか（帯が伸びないと言われたときに、届いていないのかを見分ける）
             var reports = 0;
             try
@@ -1770,15 +1958,18 @@ namespace OctantPath.UI
                 _items = _mix.Visible();
                 _selected = ready[0];
                 _mix.Select(_selected);
-                _offMix = false;
                 HideModals();
                 var pack = _playlist.WriteCurrentMix(MixName(), ready.Select(i => (i.Hash, i.Title, i.Map?.Key, i.Mapper)).ToList());
                 _mixPack = pack;
                 _mixPlaylistStale = false;
                 var opened = pack != null && SongSelect.OpenPack(pack, _selected.Hash, _selected.Candidate.Characteristic, _selected.Candidate.Difficulty);
                 var missing = picked.Count - ready.Count;
-                _message = Lang.T(opened ? "create.opened" : "create.made")
-                    + (missing > 0 ? Lang.T("create.missing", new { missing }) : "");
+                // 開けたなら曲選択に出ているので、板には何も書かない。開けなかったときと、取れなかった曲があるときだけ書く
+                _message = (opened ? "" : Lang.T("create.made")) + (missing > 0 ? Lang.T("create.missing", new { missing }) : "");
+                if (opened && missing == 0)
+                {
+                    Flash(Lang.T("status.opened"));
+                }
             }
             catch (OperationCanceledException)
             {
@@ -1806,12 +1997,11 @@ namespace OctantPath.UI
             {
                 _selected = item;
                 _mix?.Select(item);
-                _offMix = false;
             }
             Notify();
             if (!item.Installed)
             {
-                _message = _downloads.IsPlaced(item.Hash) ? Lang.T("item.loadingTitle", new { title = item.Title }) : Lang.T("item.downloadingTitle", new { title = item.Title });
+                _message = "";
                 FillList();
                 Notify();
                 // 取得中なら、その取得が終わるのを待ってから、今すぐ使うので読み直して確かめる
@@ -1832,7 +2022,7 @@ namespace OctantPath.UI
             }
             if (!inMix)
             {
-                _message = SongSelect.Select(item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, null) ? Lang.T("select.done") : Lang.T("select.failed");
+                _message = SelectedOrFailed(SongSelect.Select(item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, null));
                 SongSelect.RedrawCovers(new[] { item.Hash });
                 FillList();
                 Notify();
@@ -1844,7 +2034,7 @@ namespace OctantPath.UI
                 _mixPack = _playlist.WriteCurrentMix(MixName(), _mix.All.Select(i => (i.Hash, i.Title, i.Map?.Key, i.Mapper)).ToList()) ?? _mixPack;
                 _mixPlaylistStale = false;
             }
-            _message = SongSelect.Select(item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, _mix != null ? _mixPack : null) ? Lang.T("select.done") : Lang.T("select.failed");
+            _message = SelectedOrFailed(SongSelect.Select(item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, _mix != null ? _mixPack : null));
             SongSelect.RedrawCovers(new[] { item.Hash });
             FillList();
             Notify();
@@ -1908,8 +2098,7 @@ namespace OctantPath.UI
                     // ミックスのプレイリストで、ゲームの一覧から並びの別の曲を選んで始めた。そこを今の曲にする
                     _selected = _playedInMix;
                     _mix.Select(_selected);
-                    _offMix = false;
-                    FillList();
+                        FillList();
                     Notify();
                 }
                 // 下見から遊んだ曲を始めた。ほかの曲を始めたら、下見には戻らない
@@ -1921,6 +2110,7 @@ namespace OctantPath.UI
                 _draftResumePending = false;
                 // 前の結果画面のおすすめは出さない
                 _resultsPanel.Show("", new List<RecommendationItem>(), null);
+                _resultsPlayed = null;
                 _advancePending = false;
                 _pendingPick = null;
                 return;
@@ -1975,8 +2165,11 @@ namespace OctantPath.UI
         [UIComponent("auto-next-plate")]
         private HMUI.ImageView _autoNextPlate;
 
-        [UIComponent("auto-next-label")]
-        private ClickableText _autoNextLabel;
+        [UIComponent("auto-next-icon")]
+        private ClickableImage _autoNextIcon;
+
+        [UIComponent("auto-next-dot")]
+        private HMUI.ImageView _autoNextDot;
 
         [UIAction("auto-next-click")]
         private void AutoNextClick()
@@ -1988,16 +2181,7 @@ namespace OctantPath.UI
         // 札の色を今の設定に合わせる
         private void ShowAutoNext()
         {
-            var on = _settingsHolder.Current.MixAutoAdvance;
-            if (_autoNextPlate != null)
-            {
-                _autoNextPlate.color = on ? AutoNextOnColor : AutoNextOffColor;
-            }
-            if (_autoNextLabel != null)
-            {
-                _autoNextLabel.DefaultColor = on ? UnityEngine.Color.white : AutoNextOffText;
-                _autoNextLabel.color = _autoNextLabel.DefaultColor;
-            }
+            PaintTile(_autoNextPlate, _autoNextIcon, _autoNextDot, _settingsHolder.Current.MixAutoAdvance, true);
             NotifyPropertyChanged(nameof(AutoNextHint));
         }
 
@@ -2010,8 +2194,11 @@ namespace OctantPath.UI
         [UIComponent("ceiling-plate")]
         private HMUI.ImageView _ceilingPlate;
 
-        [UIComponent("ceiling-label")]
-        private ClickableText _ceilingLabel;
+        [UIComponent("ceiling-icon")]
+        private ClickableImage _ceilingIcon;
+
+        [UIComponent("ceiling-dot")]
+        private HMUI.ImageView _ceilingDot;
 
         // 浮かぶ板の上限の札。下見の小窓が開いていれば、下見のボタンと同じく下見を取り直す（2026-10-30）
         [UIAction("ceiling-click")]
@@ -2051,37 +2238,136 @@ namespace OctantPath.UI
         // 上限の札の色と文字を今の設定に合わせる（「自動で次へ」の札と同じ色）
         private void ShowCeiling()
         {
-            var on = _settingsHolder.Current.DifficultyCeiling;
-            if (_ceilingPlate != null)
-            {
-                _ceilingPlate.color = on ? AutoNextOnColor : AutoNextOffColor;
-            }
-            if (_ceilingLabel != null)
-            {
-                _ceilingLabel.DefaultColor = on ? UnityEngine.Color.white : AutoNextOffText;
-                _ceilingLabel.color = _ceilingLabel.DefaultColor;
-            }
+            PaintTile(_ceilingPlate, _ceilingIcon, _ceilingDot, _settingsHolder.Current.DifficultyCeiling, true);
             NotifyPropertyChanged(nameof(CeilingHint));
             NotifyPropertyChanged(nameof(CeilingText));
         }
 
-        private static readonly UnityEngine.Vector2 CeilingPlateSize = new UnityEngine.Vector2(16f, 5.5f);
+        // 板全体の外側の角の半径（UI の単位。推測で決めた値）
+        private const float TileCornerRadius = 2f;
 
-        // 札の色: 入は OctantPath の青（下見の試聴中の行と同じ #4C9AFF）、切は固定のボタンの板と同じ淡い白と灰色の文字
-        private static readonly UnityEngine.Color AutoNextOnColor = new UnityEngine.Color(0.298f, 0.604f, 1f, 1f);
-        private static readonly UnityEngine.Color AutoNextOffColor = new UnityEngine.Color(1f, 1f, 1f, 0.08f);
-        private static readonly UnityEngine.Color AutoNextOffText = new UnityEngine.Color(0.733f, 0.733f, 0.733f, 1f);
-        private static readonly UnityEngine.Vector2 AutoNextPlateSize = new UnityEngine.Vector2(22f, 5.5f);
+        // マスの色。ゲームの曲選択の左のタブに寄せる: 切は暗い地に白っぽい文字、入は少し明るい地に青い文字、押せないときは灰色の文字。
+        // 地の濃さは設定の「推薦の板の不透明度」（panelOpacity。結果画面の板の背景と同じ値）
+        // マスの地はオンでもオフでも同じ暗い色。オン・オフは文字の色だけで示す（地の色が何種類も混ざると締まりがなかった、2026-11-08）
+        private static readonly UnityEngine.Color TileColorBase = new UnityEngine.Color(0.08f, 0.08f, 0.11f, 1f);
+        // 色の意味は 1 つずつ（2026-11-09）: 青 = 入っている（切り替えだけ）、白 = 押せる、薄い灰 = 切り替えの切、暗い灰 = いま押せない。
+        // 切り替えの入は、色に加えて下端の点でも示す（色だけに頼らない）
+        private static readonly UnityEngine.Color TileOnText = new UnityEngine.Color(0f, 0.75f, 1f, 1f);
+        private static readonly UnityEngine.Color TileText = new UnityEngine.Color(0.92f, 0.92f, 0.94f, 1f);
+        private static readonly UnityEngine.Color TileOffText = new UnityEngine.Color(0.7f, 0.7f, 0.74f, 1f);
+        private static readonly UnityEngine.Color TileDisabledText = new UnityEngine.Color(0.36f, 0.36f, 0.39f, 1f);
+
+        private float TileAlpha => PanelLook.Opacity(_settingsHolder.Current.PanelOpacity);
+
+        private UnityEngine.Color TileColor()
+        {
+            var color = TileColorBase;
+            color.a = TileAlpha;
+            return color;
+        }
+
+        // 上の段のマス。icon は入なら青、切なら薄い灰（offColor）、押せないなら暗い灰。dot は入のときだけ出す（null ならない）
+        private void PaintTile(HMUI.ImageView plate, ClickableImage icon, HMUI.ImageView dot, bool on, bool enabled, UnityEngine.Color? offColor = null)
+        {
+            if (plate != null)
+            {
+                plate.color = TileColor();
+            }
+            if (icon != null)
+            {
+                icon.DefaultColor = !enabled ? TileDisabledText : on ? TileOnText : offColor ?? TileOffText;
+                // 手を当てたときは少し明るく（押せないときは変えない）
+                icon.HighlightColor = enabled ? UnityEngine.Color.Lerp(icon.DefaultColor, UnityEngine.Color.white, 0.5f) : icon.DefaultColor;
+                icon.color = icon.DefaultColor;
+            }
+            if (dot != null)
+            {
+                PlaceDot(dot);
+                dot.color = TileOnText;
+                dot.raycastTarget = false;
+                dot.gameObject.SetActive(on && enabled);
+            }
+        }
+
+        // 入の印の点の大きさと、マスの下端からの高さ（UI の単位）
+        private const float DotSize = 0.7f;
+        private const float DotLift = 0.3f;
+
+        // 点はマスの並びから外し、下端の真ん中に置く（絵の位置は動かさない）。
+        // BSML の余白（pad-bottom）は整数しか読めず、0.35 と書くと板ごと作れなかった（2026-11-10）
+        private static void PlaceDot(HMUI.ImageView dot)
+        {
+            var layout = dot.GetComponent<UnityEngine.UI.LayoutElement>() ?? dot.gameObject.AddComponent<UnityEngine.UI.LayoutElement>();
+            layout.ignoreLayout = true;
+            var rect = dot.rectTransform;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new UnityEngine.Vector2(0.5f, 0f);
+            rect.sizeDelta = new UnityEngine.Vector2(DotSize, DotSize);
+            rect.anchoredPosition = new UnityEngine.Vector2(0f, DotLift);
+        }
+
+        private void PaintTiles()
+        {
+            ShowSave();
+            ShowAutoNext();
+            ShowCeiling();
+            ShowPin();
+            if (_topGapPlate != null)
+            {
+                _topGapPlate.color = TileColor();
+            }
+            if (_statusPlate != null)
+            {
+                _statusPlate.color = TileColor();
+            }
+            // 曲の行は、上下の段のマスより明るく青みのある地にして、板の主役に見せる（灰色だけだと 9 枚のマスが同じ重さに並んで締まりがなかった、2026-11-08）
+            if (_songPlate != null)
+            {
+                // 左（青い線の側）が明るく、右へ暗くなる横のグラデーション。頂点の色を変えるだけなので重くはない
+                _songPlate.color = new UnityEngine.Color(1f, 1f, 1f, TileAlpha);
+                _songPlate.color0 = SongRowLeftColor;
+                _songPlate.color1 = SongRowRightColor;
+                _songPlate.gradient = true;
+            }
+            PaintShortcuts();
+        }
+
+        private static readonly UnityEngine.Color SongRowLeftColor = new UnityEngine.Color(0.20f, 0.30f, 0.48f, 1f);
+        private static readonly UnityEngine.Color SongRowRightColor = new UnityEngine.Color(0.11f, 0.15f, 0.24f, 1f);
+
+        [UIComponent("pin-plate")]
+        private HMUI.ImageView _pinPlate;
+
+        [UIComponent("pin-icon")]
+        private ClickableImage _pinIcon;
+
+        [UIComponent("pin-dot")]
+        private HMUI.ImageView _pinDot;
+
+        [UIComponent("status-plate")]
+        private HMUI.ImageView _statusPlate;
+
+        // 上の段の、左の 3 つとピンの間の地だけのマス
+        [UIComponent("top-gap-plate")]
+        private HMUI.ImageView _topGapPlate;
+
+        // ピンは「移動中」を入として灯す（ほかの切り替えと同じ見せ方）
+        private void ShowPin()
+        {
+            PaintTile(_pinPlate, _pinIcon, _pinDot, !_pinned, true);
+        }
 
         // 下見から 1 曲だけ遊んで曲選択に戻った: 下見の小窓を開き直す。結果画面でおすすめを選んだ（次の曲へ進む）ときは開かない
         private void ResumeDraft()
         {
             _draftResumePending = false;
+            // 開き直すのは 1 回だけ（開かなかったときも）。同じ曲をまた遊んでも、もう開かない
+            var from = _draftResumeHash;
+            _draftResumeHash = null;
             if (_draft == null || _busy || _advancePending || _pendingPick != null || _placing != null)
             {
                 return;
             }
-            Plugin.Log.Info($"[mix] back from {_draftResumeHash}; reopening the draft");
+            Plugin.Log.Info($"[mix] back from {from}; reopening the draft");
             _draftSelected = null;
             _draftMessage = "";
             ShowDraftModal();
@@ -2117,8 +2403,43 @@ namespace OctantPath.UI
         // 結果画面のおすすめ: 遊んだ譜面を起点に数曲だけ受け取る（取得はしない）。種類は今のミックスの種類（起点を使うもの）か、一覧で最初の起点を使うもの
         private const int ResultsCount = 3;
 
-        private async System.Threading.Tasks.Task LoadResultsAsync(ChartRef played)
+        // いまの結果画面のおすすめの起点と、そこで出した曲（題を押して入れ替えるときに除く）。次に遊び始めると null
+        private ChartRef _resultsPlayed;
+        private readonly HashSet<string> _resultsSeen = new HashSet<string>();
+        private bool _resultsLoading;
+        // 結果画面の読み込みの番号。古い読み込みの終わりが、新しい読み込みの印を消さないように
+        private int _resultsLoad;
+
+        // 結果画面の板の題を押した: 同じ起点・種類で、出した曲を除いて別の曲を受け取り、並びを入れ替える。
+        // 出さなかった曲は skipped にしない（押さなかっただけで、外すと決めたのではない。OctantVector 法 4.2）
+        private async System.Threading.Tasks.Task ShowOtherResultsAsync()
         {
+            var played = _resultsPlayed;
+            if (played == null || _resultsLoading || _placing != null || _pendingPick != null)
+            {
+                return;
+            }
+            _preview.Stop();
+            _resultsPanel.SetDetail(Lang.T("next.againLoading"));
+            await LoadResultsAsync(played, true);
+        }
+
+        // 結果画面の行を押して試聴した。曲への興味の印として残す（推薦にどう使うかは OctantVector が決める。2026-11-04）
+        private void PreviewedFromResults(RecommendationItem item)
+        {
+            _signals.RecordRecommendation(item.RequestId, item.Preset, item.Candidate.Reason?.Hand, item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, "previewed");
+        }
+
+        // again: 題を押して入れ替える。出せなければ、今の並びは残して、そう書くだけ
+        private async System.Threading.Tasks.Task LoadResultsAsync(ChartRef played, bool again = false)
+        {
+            if (!again)
+            {
+                _resultsPlayed = played;
+                _resultsSeen.Clear();
+            }
+            _resultsLoading = true;
+            var load = ++_resultsLoad;
             try
             {
                 var presets = ShownPresets();
@@ -2127,18 +2448,41 @@ namespace OctantPath.UI
                 if (preset == null)
                 {
                     var status = _connection.Status;
-                    _resultsPanel.ShowUnavailable(Lang.T("next.titlePlain"), status.State != Core.Connection.ConnectionState.Ready ? Core.Connection.StatusText.Describe(status) : Lang.T("recommend.none"));
+                    var why = status.State != Core.Connection.ConnectionState.Ready ? Core.Connection.StatusText.Describe(status) : Lang.T("recommend.none");
+                    if (again)
+                    {
+                        // 入れ替えられないときは、今の並びを残して理由だけ書く
+                        _resultsPanel.SetDetail(why);
+                        return;
+                    }
+                    _resultsPanel.ShowUnavailable(Lang.T("next.titlePlain"), why);
                     return;
                 }
                 var request = PresetRules.Request(preset, played, null, ResultsCount, _settingsHolder.Current.DifficultyCeiling);
-                var exclude = new HashSet<string> { played.Hash };
+                var exclude = new HashSet<string>(_resultsSeen) { played.Hash };
                 if (_mix != null)
                 {
                     exclude.UnionWith(_mix.All.Select(i => i.Hash).Where(h => h != null));
                 }
-                request.Exclude = exclude.Select(h => new ExcludeEntry { Hash = h, Reason = "in_mix" }).ToList();
+                request.Exclude = exclude.Select(h => new ExcludeEntry { Hash = h, Reason = _resultsSeen.Contains(h) ? "shown" : "in_mix" }).ToList();
                 var result = await _recommendations.RequestAsync(request, _lifetime.Token);
+                if (_resultsPlayed != played)
+                {
+                    // 待っている間に次の曲を遊び始めた
+                    return;
+                }
+                if (again && (_pendingPick != null || _placing != null))
+                {
+                    // 待っている間に ▶ で曲を選んだ。選んだ曲の印と進み具合を、入れ替えで消さない
+                    return;
+                }
                 var items = result.Error == null ? RecommendationDisplay.Shown(result.Items) : new List<RecommendationItem>();
+                if (items.Count == 0 && again)
+                {
+                    Plugin.Log.Info($"[results] no other recommendations: {result.Error ?? "empty"}");
+                    _resultsPanel.SetDetail(result.Error ?? Lang.T("next.againNone"));
+                    return;
+                }
                 if (items.Count == 0)
                 {
                     Plugin.Log.Info($"[results] no recommendations: {result.Error ?? (result.Items.Count == 0 ? "empty" : $"BeatSaver does not know all {result.Items.Count}")}");
@@ -2148,14 +2492,17 @@ namespace OctantPath.UI
                 }
                 foreach (var item in items)
                 {
+                    _resultsSeen.Add(item.Hash);
                     _signals.RecordRecommendation(item.RequestId, item.Preset, item.Candidate.Reason?.Hand, item.Hash, item.Candidate.Characteristic, item.Candidate.Difficulty, "shown");
                 }
                 // 選ばなければ進む曲。ミックスのプレイリストで遊んだときだけ進む
                 var next = _playedInMix != null && _settingsHolder.Current.MixAutoAdvance ? _mix?.Next() : null;
                 _resultsPanel.Show(Lang.T("next.title", new { preset = preset.Label }), items, next != null ? Lang.T("next.hintWithNext", new { next = next.Title }) : Lang.T("next.hint"));
-                Plugin.Log.Info($"[results] {preset.Id} requestId={result.Response?.RequestId} seed={played.Hash} candidates={items.Count} leftOut={result.Items.Count - items.Count}");
+                Plugin.Log.Info($"[results] {preset.Id} requestId={result.Response?.RequestId} seed={played.Hash} candidates={items.Count} leftOut={result.Items.Count - items.Count} again={again}");
                 // 押したらすぐ聞けるように、並んだ曲の試聴を先読みする（次の曲を遊び始めて板のおすすめが替わったらやめる）
                 _preview.Prefetch(items.Select(i => i.Version?.PreviewUrl).Where(u => u != null).ToList(), () => _resultsPanel.Holds(items));
+                // カバーを待つ間も、題を押せば入れ替えられるように
+                _resultsLoading = false;
                 await LoadCoversAsync(items, () => true, _resultsPanel.Refresh);
             }
             catch (OperationCanceledException)
@@ -2164,6 +2511,19 @@ namespace OctantPath.UI
             catch (Exception ex)
             {
                 Plugin.Log.Error($"[results] {ex}");
+                if (again && _resultsPlayed == played)
+                {
+                    // 「探しています…」のままにしない
+                    _resultsPanel.SetDetail(Lang.T("recommend.failed", new { detail = ex.Message }));
+                }
+            }
+            finally
+            {
+                // カバーを待っている間に、題を押して次の読み込みが始まっていたら、その印は消さない
+                if (load == _resultsLoad)
+                {
+                    _resultsLoading = false;
+                }
             }
         }
 
@@ -2289,17 +2649,76 @@ namespace OctantPath.UI
             }
         }
 
+        [UIComponent("save-plate")]
+        private HMUI.ImageView _savePlate;
+
+        [UIComponent("save-icon")]
+        private ClickableImage _saveIcon;
+
+        // 保存のマスの絵の色: 並びがあれば白、なければ暗い灰（押しても何もしない）。押すとすぐ実行なので、灯りも点もない。
+        // 同じ曲の組み合わせがもう保存してあれば緑（ランプの「残した」と同じ色）にして、押しても保存しない（2026-11-10。押すたびにプレイリストが増えた）
+        private void ShowSave()
+        {
+            var saved = MixSaved();
+            PaintTile(_savePlate, _saveIcon, null, false, _mix != null && !_busy && !saved, TileText);
+            if (saved && _saveIcon != null)
+            {
+                _saveIcon.DefaultColor = SavedColor;
+                _saveIcon.HighlightColor = SavedColor;
+                _saveIcon.color = SavedColor;
+            }
+            NotifyPropertyChanged(nameof(SaveHint));
+        }
+
+        private static readonly UnityEngine.Color SavedColor = new UnityEngine.Color(0.5f, 1f, 0.6f, 1f);
+
+        [UIValue("save-hint")]
+        public string SaveHint => Lang.T(MixSaved() ? "panel.savedHint" : "panel.saveHint");
+
+        // 保存済みかどうかは、並びの曲の組み合わせが変わったときだけプレイリストを読んで確かめる
+        private string _savedCheckKey;
+        private bool _savedCheck;
+
+        private bool MixSaved()
+        {
+            if (_mix == null)
+            {
+                return false;
+            }
+            var hashes = MixHashes();
+            var key = string.Join(",", hashes.OrderBy(h => h, StringComparer.Ordinal));
+            if (key != _savedCheckKey)
+            {
+                _savedCheckKey = key;
+                try
+                {
+                    _savedCheck = _playlist.HasSavedMix(hashes);
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.Warn($"[playlist] could not check saved mixes: {e.Message}");
+                    _savedCheck = false;
+                }
+            }
+            return _savedCheck;
+        }
+
+        private List<string> MixHashes() => _mix.All.Where(i => i.Hash != null).Select(i => i.Hash.ToLowerInvariant()).ToList();
+
         // 並びをプレイリストに保存する。保存したプレイリストは OctantPath のお試しの表示ではないので、
         // その曲は自動削除から守られる（OctantPath 法 3.4 のプレイリストの扱い）
         [UIAction("save-click")]
         private void SaveClick()
         {
-            if (_mix == null)
+            if (_mix == null || _busy || MixSaved())
             {
                 return;
             }
             _playlist.SaveMix(MixName(), _mix.All.Select(i => (i.Hash, i.Title, i.Map?.Key, i.Mapper)).ToList());
-            _message = Lang.T("save.done");
+            _savedCheckKey = null;
+            // 保存はほかの画面では見えないので、下の段に短く知らせる（板には残さない）
+            _message = "";
+            Flash(Lang.T("save.done"));
             Notify();
         }
 
@@ -2329,11 +2748,22 @@ namespace OctantPath.UI
             }
         }
 
+        // 曲選択で選べたら下の段に短く知らせ、選べなければ失敗の知らせを返す
+        private string SelectedOrFailed(bool selected)
+        {
+            if (selected)
+            {
+                Flash(Lang.T("status.selected"));
+                return "";
+            }
+            return Lang.T("select.failed");
+        }
+
         private void SetBusy(bool busy, string message)
         {
             var changed = _busy != busy;
             _busy = busy;
-            // 下見の行の ⇔ と ↓ は、取得や作成の途中は出さない。行は選んでもカバーが届いても作り直さないので、ここで作り直す
+            // 下見の行の ⇔ と ▶ は、取得や作成の途中は出さない。行は選んでもカバーが届いても作り直さないので、ここで作り直す
             if (changed && _draft != null)
             {
                 FillDraftList();
@@ -2347,29 +2777,13 @@ namespace OctantPath.UI
 
         private void Notify()
         {
-            NotifyPropertyChanged(nameof(HeaderText));
+            ShowSave();
+            NotifyStatus();
             NotifyPropertyChanged(nameof(MixInteractable));
             NotifyPropertyChanged(nameof(PlayInteractable));
             NotifyPropertyChanged(nameof(DetailText));
             NotifyPropertyChanged(nameof(FilterText));
             NotifyDraft();
         }
-    }
-
-    // アルバムアートの左上に重ねる「ミックス」（♪）の BSML の受け手
-    internal sealed class StartMixButton
-    {
-        private readonly Action _click;
-
-        public StartMixButton(Action click)
-        {
-            _click = click;
-        }
-
-        [UIComponent("button")]
-        public UnityEngine.UI.Button Button;
-
-        [UIAction("click")]
-        private void Click() => _click();
     }
 }

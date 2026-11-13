@@ -197,11 +197,21 @@ namespace OctantPath.Core.Settings
         [JsonProperty("difficultyCeiling")]
         public bool DifficultyCeiling { get; set; }
 
+        // 曲選択の上の板の下の段に並べる「推薦の近道」の手札の id（3 枠）。空の枠は最近使った手札で埋める（Core.UI.Shortcuts）。
+        // 設定の画面のプルダウンで選ぶ（2026-11-08）
+        [JsonProperty("shortcutPresets", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<string> ShortcutPresets { get; set; }
+
+        // 最近使った手札の id（新しい順）。近道の空いた枠を埋めるのに使う。板で手札を選ぶたびに書く
+        [JsonProperty("recentPresets", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+        public List<string> RecentPresets { get; set; }
+
         // 推薦の板（曲選択と結果画面の上）の大きさ。BSML の浮かぶ画面の標準（1）に対する倍率
         [JsonProperty("recommendationPanelScale")]
         public double RecommendationPanelScale { get; set; }
 
-        // 推薦の板の背景の不透明度（0〜1）。後ろのゲームの光る物で文字が読みにくいときに上げる
+        // 推薦の板の不透明度（0〜1）。曲選択の板のマスと、結果画面の板（と一覧を出すときの曲選択の板）の背景に同じ値を使う。
+        // 分けると、設定の画面の見本（曲選択の板）で結果画面の板の濃さを確かめられなかった（2026-11-03）。後ろのゲームの光る物で文字が読みにくいときに上げる
         [JsonProperty("panelOpacity")]
         public double PanelOpacity { get; set; }
 

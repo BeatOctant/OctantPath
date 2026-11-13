@@ -8,13 +8,14 @@ namespace OctantPath.UI
     // 読めなかったら null を返し、呼ぶ側は文字の記号に戻す
     internal static class Icons
     {
-        public const string Download = "download";
         public const string Swap = "swap";
         public const string Play = "play";
         public const string Discard = "discard";
         public const string Add = "add";
         public const string StatusReady = "status-ready";
         public const string StatusWaiting = "status-waiting";
+        public const string Trial = "trial";
+        public const string Kept = "kept";
 
         private static readonly Dictionary<string, UnityEngine.Sprite> Loaded = new Dictionary<string, UnityEngine.Sprite>();
 

@@ -2,21 +2,6 @@ using System.Linq;
 
 namespace OctantPath.UI
 {
-    // 板の下の縁の真ん中の位置と、板の向き・曲がり方
-    internal readonly struct PanelBase
-    {
-        public PanelBase(UnityEngine.Vector3 bottom, UnityEngine.Quaternion rotation, float radius)
-        {
-            Bottom = bottom;
-            Rotation = rotation;
-            Radius = radius;
-        }
-
-        public UnityEngine.Vector3 Bottom { get; }
-        public UnityEngine.Quaternion Rotation { get; }
-        public float Radius { get; }
-    }
-
     // 浮かぶ板の見た目と置き方。BSML の浮かぶ画面の背景（Background）は不透明に近い灰色なので、透けるようにする
     internal static class PanelLook
     {
@@ -88,7 +73,7 @@ namespace OctantPath.UI
         private const float KnobHeight = 3f;
         private const float KnobGap = 0.5f;
 
-        // 背景の不透明度（設定の panelOpacity）。透けすぎて文字が読めなくならないよう下限を置く（設定画面のスライダーも同じ範囲）
+        // 背景とマスの不透明度（設定の panelOpacity）。透けすぎて文字が読めなくならないよう下限を置く（設定画面のスライダーも同じ範囲）
         public const float MinOpacity = 0.2f;
 
         public static float Opacity(double setting) => UnityEngine.Mathf.Clamp((float)setting, MinOpacity, 1f);
@@ -127,5 +112,71 @@ namespace OctantPath.UI
             color.a = Opacity(opacity);
             background.color = color;
         }
-    }
+    
+
+        // 角を選んで丸めた板の絵（白一色。9 分割で伸ばす）。浮かぶ板のマスで、板全体の外側の角だけを丸め、マスどうしが接する内側の角は
+        // 尖らせるのに使う（2026-11-03）。ゲームの絵は角が 4 つとも丸いので、OctantPath で描く。丸め方ごとに 1 つ作って使い回す
+        private const int CornerPixels = 16;
+        private static readonly System.Collections.Generic.Dictionary<int, UnityEngine.Sprite> CornerSprites = new System.Collections.Generic.Dictionary<int, UnityEngine.Sprite>();
+
+        public static UnityEngine.Sprite CornerSprite(bool topLeft, bool topRight, bool bottomLeft, bool bottomRight)
+        {
+            var key = (topLeft ? 1 : 0) | (topRight ? 2 : 0) | (bottomLeft ? 4 : 0) | (bottomRight ? 8 : 0);
+            if (CornerSprites.TryGetValue(key, out var made) && made != null)
+            {
+                return made;
+            }
+            var size = CornerPixels * 2;
+            var texture = new UnityEngine.Texture2D(size, size, UnityEngine.TextureFormat.RGBA32, false)
+            {
+                filterMode = UnityEngine.FilterMode.Bilinear,
+                wrapMode = UnityEngine.TextureWrapMode.Clamp,
+            };
+            float r = CornerPixels;
+            var pixels = new UnityEngine.Color32[size * size];
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    // テクスチャの y は下から上へ。丸める角の 4 分の 1 円の外は透かし、縁は 1 ピクセルでぼかす
+                    var left = x < r;
+                    var bottom = y < r;
+                    var round = left && bottom ? bottomLeft : left ? topLeft : bottom ? bottomRight : topRight;
+                    var alpha = 1f;
+                    if (round)
+                    {
+                        var cx = left ? r : size - r;
+                        var cy = bottom ? r : size - r;
+                        var dx = x + 0.5f - cx;
+                        var dy = y + 0.5f - cy;
+                        var dist = UnityEngine.Mathf.Sqrt(dx * dx + dy * dy);
+                        alpha = UnityEngine.Mathf.Clamp01(r - dist + 0.5f);
+                    }
+                    pixels[y * size + x] = new UnityEngine.Color32(255, 255, 255, (byte)UnityEngine.Mathf.RoundToInt(alpha * 255f));
+                }
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            made = UnityEngine.Sprite.Create(texture, new UnityEngine.Rect(0, 0, size, size), new UnityEngine.Vector2(0.5f, 0.5f), 100f, 0, UnityEngine.SpriteMeshType.FullRect, new UnityEngine.Vector4(r, r, r, r));
+            CornerSprites[key] = made;
+            return made;
+        }
+
+        // 板に角を選んで丸めた絵を張り、丸めた角の半径を radius（UI の単位）にする
+        public static void ShapeCorners(HMUI.ImageView plate, float radius, bool topLeft, bool topRight, bool bottomLeft, bool bottomRight)
+        {
+            if (plate == null)
+            {
+                return;
+            }
+            plate.sprite = CornerSprite(topLeft, topRight, bottomLeft, bottomRight);
+            plate.type = UnityEngine.UI.Image.Type.Sliced;
+            // sprite の pixelsPerUnit を Canvas の referencePixelsPerUnit で割ったもの（multiplier は含まない）
+            var pixelsPerUnit = plate.pixelsPerUnit;
+            if (pixelsPerUnit > 0f && radius > 0f)
+            {
+                plate.pixelsPerUnitMultiplier = CornerPixels / (radius * pixelsPerUnit);
+            }
+        }
+}
 }

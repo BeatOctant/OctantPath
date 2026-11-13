@@ -17,6 +17,7 @@ namespace OctantPath.Installers
             Container.Bind<PanelPlacement>().AsSingle();
             Container.BindInterfacesAndSelfTo<SettingsMenu>().AsSingle();
             Container.BindInterfacesTo<RecommendationTab>().AsSingle();
+            Container.BindInterfacesAndSelfTo<TrialLamp>().AsSingle();
             Container.Bind<ProfileViewController>().FromNewComponentAsViewController().AsSingle();
             Container.Bind<ConnectionViewController>().FromNewComponentAsViewController().AsSingle();
             Container.Bind<OctantPathFlowCoordinator>().FromNewComponentOnNewGameObject().AsSingle();

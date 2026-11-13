@@ -1,50 +1,84 @@
 <bg xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:noNamespaceSchemaLocation='https://raw.githubusercontent.com/monkeymanboy/BSML-Docs/gh-pages/BSMLSchema.xsd'>
-  <!-- 曲選択の画面の上に浮かぶ、ミックスの板（120 x 71、並びの一覧を出さないときは 120 x 45）。ボタンの列は幅を足して 116 以内に収める。一覧はジョイスティックでめくれるので、めくるボタンは置かない -->
-  <vertical child-control-height='true' child-expand-height='false' child-align='UpperCenter' spacing='0' pad='2'>
-    <!-- 上の列: 機能のボタン（取得・保存・見せ方・移動）。推薦のカード（下のタイル）とは違う、BSML の普通のボタン -->
-    <horizontal spacing='0' preferred-height='7' child-expand-width='false'>
-      <horizontal spacing='1' preferred-width='101' preferred-height='7' child-expand-width='false' child-align='MiddleLeft'>
-        <button text='{{panel.get}}' active='~list-visible' on-click='play-click' interactable='~play-interactable' preferred-width='18' preferred-height='7' hover-hint='{{panel.getHint}}'/>
-        <button text='{{panel.save}}' on-click='save-click' interactable='~mix-interactable' preferred-width='16' preferred-height='7' hover-hint='{{panel.saveHint}}'/>
-        <button text='~filter-text' active='~list-visible' on-click='filter-click' interactable='~mix-interactable' preferred-width='24' preferred-height='7' hover-hint='{{panel.filterHint}}'/>
-        <!-- ミックスの曲を遊び終えたら、次の曲を自動で選ぶか（settings の mixAutoAdvance）。押すたびに入と切が替わる。
-             入切は文字で書かず、丸い札の色で出す（入は OctantPath の青、切は背景に溶ける板と灰色の文字。2026-10-18） -->
-        <!-- 札は並びの残りの幅いっぱいに伸びた（2026-10-18）。stack（HMUI.StackLayoutGroup）は子を広げる設定のとき伸びる幅（flexible）を 1 以上で返すので、札とその外側の並びの伸びる幅を 0 にする -->
-        <horizontal preferred-width='22' preferred-height='7' flexible-width='0' child-expand-width='false' child-align='MiddleCenter'>
-          <stack preferred-width='22' preferred-height='5.5' flexible-width='0'>
-            <image id='auto-next-plate' src='#RoundRect10'/>
-            <clickable-text id='auto-next-label' text='{{panel.autoNext}}' on-click='auto-next-click' font-size='3' align='Center' hover-hint='~auto-next-hint'/>
-          </stack>
-        </horizontal>
-        <!-- 難しさの上限（settings の difficultyCeiling）。札の作りと色は「自動で次へ」と同じ。下見の小窓の下の列でも切り替えられる（2026-10-25） -->
-        <horizontal preferred-width='16' preferred-height='7' flexible-width='0' child-expand-width='false' child-align='MiddleCenter'>
-          <stack preferred-width='16' preferred-height='5.5' flexible-width='0'>
-            <image id='ceiling-plate' src='#RoundRect10'/>
-            <clickable-text id='ceiling-label' text='{{panel.ceiling}}' on-click='ceiling-click' font-size='3' align='Center' hover-hint='~ceiling-hint'/>
-          </stack>
-        </horizontal>
-      </horizontal>
-      <horizontal spacing='1' preferred-width='15' preferred-height='7' child-expand-width='false' child-align='MiddleRight'>
-        <!-- 置き直す: 移動にしている間だけ、ピンの左に出す。押すと板を最初の位置（曲選択の画面の上）へ戻す（2026-10-24） -->
-        <stack active='~reset-visible' preferred-width='7' preferred-height='7'>
-          <image id='reset-plate' src='#RoundRect10' image-color='#FFFFFF08'/>
-          <clickable-image src='OctantPath.Icons.reset.png' on-click='reset-click' preserve-aspect='true' hover-hint='{{panel.resetHint}}'/>
-        </stack>
-        <!-- 固定と移動の切り替え。絵は傾けた押しピン 1 つ（OctantPath の絵。Icons）。今どちらかは説明の文で出す。
-             下線の付く BSML の button は使わず、背景にほぼ溶ける正方形の板に押せる絵を重ねる（2026-10-16）。
-             幅を足して 116（左の並びが 101、置き直すとピンが 7 ずつと隙間 1）。ピンは右の端に寄せる -->
-        <stack preferred-width='7' preferred-height='7'>
-          <image id='pin-plate' src='#RoundRect10' image-color='#FFFFFF08'/>
-          <clickable-image src='OctantPath.Icons.pin.png' on-click='pin-click' preserve-aspect='true' hover-hint='~pin-hint'/>
-        </stack>
-      </horizontal>
+  <!-- 曲選択の画面の上に浮かぶ一枚の板（74 x 22.4、並びの一覧を出すときは 120 x 60.2）。板の背景は出さず、マスを詰めて板の形を作る。
+       旧い板の「一枚もので、選んでいる曲が見える」形を、11-03 のタブの見た目のまま戻した（2026-11-08。Discord の利用者の声から）。
+       上の段: 保存｜自動で次へ｜上限｜ピン（あまり押さないのでアイコンだけ、ピンは小さく）。
+       真ん中: 選んでいる曲の行（左端に青い縦線）。行ごと押すと種類の小窓が出る。右端はお試しのランプ（TrialLamp が置く）。
+       下の段: 推薦の近道（手札 3 つ。設定で選ぶ。名前 ⌄）。移動中・知らせ・つながらないときは、同じ高さのまま文の 1 マスに替わる。
+       曲の詳細には何も重ねない。ほかの MOD で曲の詳細の形が変わると、隠れたり重なったりしたので（2026-11-08）。
+       どの文も 1 行に固定し、はみ出す分は … で切る。マスの色は RecommendationTab.cs の PaintTiles -->
+  <vertical child-control-height='true' child-expand-height='false' child-align='UpperCenter' spacing='0.6' pad='0'>
+    <!-- 上の段: アイコンだけのマス（2026-11-09）。マスは 7.4 x 5 が 3 つ（左寄せ）、地だけの 44.1、ピンの 7.4、隙間なし（幅を足して 73.7。高さ 6 で幅いっぱいに散らすと間延びして見えた。2026-11-10）。
+         名前は手を当てたときの説明で出す。切り替え（自動で次へ・上限・ピン）は入でも切でも同じ絵で、入のときだけ青く灯り、下端に点が付く
+         （絵を入れ替えると、今の状態か押したときの動きか分かりにくかった）。点の位置は RecommendationTab.cs の PlaceDot（BSML の余白は整数しか書けない）。
+         押せる範囲はマス全体（絵の PNG のまわりを空けてある） -->
+    <horizontal spacing='0' preferred-width='73.7' preferred-height='5' child-expand-width='false' child-align='MiddleCenter'>
+      <!-- 保存: フロッピー。押すとすぐ実行（今の並びをプレイリストに残す）。同じ組み合わせが保存済みなら緑で、押せない -->
+      <stack preferred-width='7.4' preferred-height='5' flexible-width='0'>
+        <image id='save-plate' src='#RoundRect10'/>
+        <clickable-image id='save-icon' src='OctantPath.Icons.save.png' on-click='save-click' preserve-aspect='true' hover-hint='~save-hint'/>
+      </stack>
+      <!-- ミックスの曲を遊び終えたら、次の曲を自動で選ぶか（settings の mixAutoAdvance）。stack は伸びる幅を 0 にする -->
+      <stack preferred-width='7.4' preferred-height='5' flexible-width='0'>
+        <image id='auto-next-plate' src='#RoundRect10'/>
+        <clickable-image id='auto-next-icon' src='OctantPath.Icons.auto-next.png' on-click='auto-next-click' preserve-aspect='true' hover-hint='~auto-next-hint'/>
+        <image id='auto-next-dot' src='OctantPath.Icons.dot.png' preserve-aspect='true'/>
+      </stack>
+      <!-- 難しさの上限（settings の difficultyCeiling）。絵は山。下見の小窓の下の列でも切り替えられる -->
+      <stack preferred-width='7.4' preferred-height='5' flexible-width='0'>
+        <image id='ceiling-plate' src='#RoundRect10'/>
+        <clickable-image id='ceiling-icon' src='OctantPath.Icons.ceiling.png' on-click='ceiling-click' preserve-aspect='true' hover-hint='~ceiling-hint'/>
+        <image id='ceiling-dot' src='OctantPath.Icons.dot.png' preserve-aspect='true'/>
+      </stack>
+      <!-- 3 つは左に寄せ、ピンは右端。間は押せない地だけのマス（4 つが板の幅いっぱいに散ると間延びして見えた。2026-11-10） -->
+      <stack preferred-width='44.1' preferred-height='5' flexible-width='0'>
+        <image id='top-gap-plate' src='#RoundRect10'/>
+      </stack>
+      <!-- 固定と移動の切り替え。移動中だけ灯る -->
+      <stack preferred-width='7.4' preferred-height='5' flexible-width='0'>
+        <image id='pin-plate' src='#RoundRect10'/>
+        <clickable-image id='pin-icon' src='OctantPath.Icons.pin-tile.png' on-click='pin-click' preserve-aspect='true' hover-hint='~pin-hint'/>
+        <image id='pin-dot' src='OctantPath.Icons.dot.png' preserve-aspect='true'/>
+      </stack>
     </horizontal>
-    <!-- 推薦のカード: 「ミックス」（選んでいる曲から）と、曲を起点にしない種類（OctantCompass の一覧のうち、起点が要らないもの）。どれも押すと中央の小窓が出る -->
-    <!-- 文字は縮めず、2 行に分けて並べる（OctantPath.Core.UI.HomeTiles） -->
-    <horizontal id='home-row' spacing='1' preferred-width='116' preferred-height='8' child-expand-width='false' child-align='MiddleLeft'/>
-    <horizontal id='home-row-2' spacing='1' preferred-width='116' preferred-height='8' child-expand-width='false' child-align='MiddleLeft'/>
-    <text text='~header-text' font-size='3.2' align='Center' word-wrapping='true' preferred-width='112' preferred-height='6'/>
+    <!-- 真ん中: 選んでいる曲（曲名、作者 [譜面作者] 難易度の 2 行）とお試しのランプ -->
+    <stack id='song-row' preferred-width='73.7' preferred-height='10.2' flexible-width='0'>
+      <image id='song-plate' src='#RoundRect10'/>
+      <!-- 文は行いっぱいに広げ、右の余白（ランプの分）は RecommendationTab.cs で TMP の margin として空ける。
+           横の並び（horizontal）に入れると文の幅が文字の長さで決まり、ランプが行の途中に来た（2026-11-08） -->
+      <clickable-text id='song-label' text='~song-text' on-click='song-click' font-size='3' align='Left' word-wrapping='false' overflow-mode='Ellipsis'
+                      hover-hint='~song-hint'/>
+    </stack>
+    <!-- 下の段: 推薦の近道 3 つ（マスは 24.57 x 6、隙間なし。区切りの線も置かない）。名前の右に下向きの山形（押すと下に推薦の板が開く。2026-11-09）。
+         山形は RecommendationTab.cs で名前の長さに合わせて置く。押すと、選んでいる曲を起点に、その手札で下見を出す -->
+    <horizontal active='~shortcuts-visible' spacing='0' preferred-width='73.7' preferred-height='6' child-expand-width='false' child-align='MiddleCenter'>
+      <stack preferred-width='24.57' preferred-height='6' flexible-width='0'>
+        <image id='shortcut-0-plate' src='#RoundRect10'/>
+        <clickable-text id='shortcut-0-label' text='-' on-click='shortcut-0-click' font-size='2.6' align='Center' word-wrapping='false' overflow-mode='Ellipsis' hover-hint='-'/>
+        <image id='shortcut-0-mark' src='OctantPath.Icons.chevron-down.png' preserve-aspect='true'/>
+      </stack>
+      <stack preferred-width='24.57' preferred-height='6' flexible-width='0'>
+        <image id='shortcut-1-plate' src='#RoundRect10'/>
+        <clickable-text id='shortcut-1-label' text='-' on-click='shortcut-1-click' font-size='2.6' align='Center' word-wrapping='false' overflow-mode='Ellipsis' hover-hint='-'/>
+        <image id='shortcut-1-mark' src='OctantPath.Icons.chevron-down.png' preserve-aspect='true'/>
+      </stack>
+      <stack preferred-width='24.57' preferred-height='6' flexible-width='0'>
+        <image id='shortcut-2-plate' src='#RoundRect10'/>
+        <clickable-text id='shortcut-2-label' text='-' on-click='shortcut-2-click' font-size='2.6' align='Center' word-wrapping='false' overflow-mode='Ellipsis' hover-hint='-'/>
+        <image id='shortcut-2-mark' src='OctantPath.Icons.chevron-down.png' preserve-aspect='true'/>
+      </stack>
+    </horizontal>
+    <!-- 下の段（近道の代わり）: 移動中は「最初の位置に戻す」、知らせ、つながらないときはその状態。押すと、知らせを消して接続を確かめ直す。
+         ペアリングは設定の「OctantCompass との接続」で行う -->
+    <stack active='~status-visible' preferred-width='73.7' preferred-height='6' flexible-width='0'>
+      <image id='status-plate' src='#RoundRect10'/>
+      <clickable-text text='~status-text' on-click='status-click' hover-hint='~status-hint' font-size='2.6' align='Center' word-wrapping='false' overflow-mode='Ellipsis'/>
+    </stack>
+    <!-- 並びの一覧を出す設定のときだけ: 取得と見せ方、一覧、選んでいる曲の 1 行 -->
+    <horizontal active='~list-visible' spacing='1' preferred-width='116' preferred-height='7' child-expand-width='false' child-align='MiddleCenter'>
+      <button text='{{panel.get}}' on-click='play-click' interactable='~play-interactable' preferred-width='24' preferred-height='7' hover-hint='{{panel.getHint}}'/>
+      <button text='~filter-text' on-click='filter-click' interactable='~mix-interactable' preferred-width='30' preferred-height='7' hover-hint='{{panel.filterHint}}'/>
+    </horizontal>
     <list id='list' active='~list-visible' select-cell='select-cell' visible-cells='3' cell-size='7.5' list-style='List' preferred-width='112' preferred-height='24'/>
-    <text text='~detail-text' font-size='3' align='Center' word-wrapping='true' preferred-width='112' preferred-height='8'/>
+    <text text='~detail-text' active='~list-visible' font-size='3' align='Center' word-wrapping='false' overflow-mode='Ellipsis' preferred-width='112' preferred-height='5'/>
   </vertical>
 </bg>

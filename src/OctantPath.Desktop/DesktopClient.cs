@@ -172,7 +172,7 @@ namespace OctantPath.Desktop
             }
 
             var version = map?.Version(hash);
-            var diffs = version?.Diffs?.Select(d => new SeedDiff { Characteristic = d.Characteristic, Difficulty = d.Difficulty, Nps = d.Nps, Njs = d.Njs }).ToList() ?? new List<SeedDiff>();
+            var diffs = version?.Diffs?.Select(d => new SeedDiff { Characteristic = d.Characteristic, Difficulty = d.Difficulty, Njs = d.Njs }).ToList() ?? new List<SeedDiff>();
             // BeatSaver で引けない曲（消された版・自作）は、所有しているマップの Info.dat から出す
             var owned = version == null ? _library.Find(hash) : null;
             if (owned != null)
@@ -267,7 +267,7 @@ namespace OctantPath.Desktop
             return DraftView();
         }
 
-        // 下見の 1 曲だけを取得する（MOD の ↓）
+        // 下見の行の ↓ を押したとき、その 1 曲だけを取得する
         public async Task<object> ReceiveOneAsync(string id)
         {
             var draft = _draft;
@@ -1118,7 +1118,6 @@ namespace OctantPath.Desktop
     {
         [JsonProperty("characteristic")] public string Characteristic { get; set; }
         [JsonProperty("difficulty")] public string Difficulty { get; set; }
-        [JsonProperty("nps")] public double Nps { get; set; }
         [JsonProperty("njs")] public double Njs { get; set; }
     }
 

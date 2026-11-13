@@ -151,17 +151,34 @@ namespace OctantPath.Connection
             return true;
         }
 
+        // つながっている間に確かめ直す間隔は、つながっていない間の間隔（healthRetryIntervalSeconds）の 3 倍
+        // （OctantSpecs plans/octantpath-implementation.md。既定の 10 秒なら 30 秒）
+        private const int ReadyCheckMultiplier = 3;
+        private TimeSpan ReadyCheckInterval => TimeSpan.FromTicks(_settings.Current.HealthRetryInterval.Ticks * ReadyCheckMultiplier);
+
         private async Task RunAsync()
         {
             var token = _lifetime.Token;
             try
             {
+                var lastReadyCheck = DateTime.UtcNow;
                 while (!token.IsCancellationRequested)
                 {
-                    // ready の間は定期には確かめない。画面を開いたときや要求の失敗で確かめ直す
-                    if (Status.State != ConnectionState.Ready && !_gameScenesManager.InGameplay())
+                    // つながっていない間は healthRetryIntervalSeconds ごとに確かめ直す。つながっている間も、メニューにいれば
+                    // その 3 倍（ReadyCheckInterval）ごとに確かめる。確かめないと、途中で OctantCompass が止まっても、推薦を押して失敗するまで
+                    // 浮かぶ板はつながっている見た目のままだった（2026-11-08）。遊んでいる間は確かめない
+                    if (!_gameScenesManager.InGameplay())
                     {
-                        await RefreshAsync().ConfigureAwait(true);
+                        if (Status.State != ConnectionState.Ready)
+                        {
+                            await RefreshAsync().ConfigureAwait(true);
+                            lastReadyCheck = DateTime.UtcNow;
+                        }
+                        else if (DateTime.UtcNow - lastReadyCheck >= ReadyCheckInterval)
+                        {
+                            await RefreshAsync().ConfigureAwait(true);
+                            lastReadyCheck = DateTime.UtcNow;
+                        }
                     }
                     await Task.Delay(_settings.Current.HealthRetryInterval, token).ConfigureAwait(true);
                 }

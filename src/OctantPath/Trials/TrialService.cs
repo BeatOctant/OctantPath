@@ -92,8 +92,9 @@ namespace OctantPath.Trials
                 _playlist.Rebuild(_ledger, settings);
                 if (!settings.AutoDownload)
                 {
-                    // 切ったら新しく取らない。すでに入れたマップも消さない（OctantPath 法 2.7）
-                    SetStatus(Lang.T("trial.autoDownloadOff"));
+                    // 切ったら新しく取らない。すでに入れたマップも消さない（OctantPath 法 2.7）。自分で切った設定なので、板には出さない
+                    Plugin.Log.Info("[trial] auto download is off; not filling");
+                    SetStatus("");
                     _filledThisSession = true;
                     return;
                 }
@@ -126,7 +127,8 @@ namespace OctantPath.Trials
                     {
                         continue;
                     }
-                    SetStatus(Lang.T("trial.filling", new { frame = frame.DisplayName, current, count }));
+                    // 進み具合は板に出さず、ログにだけ書く
+                    Plugin.Log.Info($"[trial] filling frame {frame.Id}: {current}/{count}");
                     // 起点は送らない。値のない choice も送らない
                     var choices = frame.Choices?.Where(c => !string.IsNullOrEmpty(c.Value)).ToDictionary(c => c.Key, c => c.Value);
                     var request = PresetRules.Request(preset, null, choices, need, settings.DifficultyCeiling);
@@ -134,7 +136,9 @@ namespace OctantPath.Trials
                     total += await FillFrameAsync(frame.Id, need, request).ConfigureAwait(true);
                 }
                 _playlist.Rebuild(_ledger, settings);
-                SetStatus(total > 0 ? Lang.T("trial.added", new { total }) : Lang.T("trial.full"));
+                // 新しく入れた曲があるときだけ板に出す。枠が埋まっているのはいつもの状態なので出さない
+                Plugin.Log.Info($"[trial] added {total}");
+                SetStatus(total > 0 ? Lang.T("trial.added", new { total }) : "");
                 _filledThisSession = true;
             }
             catch (OperationCanceledException)
@@ -239,10 +243,22 @@ namespace OctantPath.Trials
             return hashes.OrderBy(h => h, StringComparer.Ordinal).Select(h => new ExcludeEntry { Hash = h, Reason = reasons.TryGetValue(h, out var r) ? r : "installed" }).ToList();
         }
 
+        // 板の下の段を押して知らせを消した。次に取得して何かあれば、また知らせる
+        public void ClearStatus()
+        {
+            if (!string.IsNullOrEmpty(Status))
+            {
+                SetStatus("");
+            }
+        }
+
         private void SetStatus(string status)
         {
             Status = status;
-            Plugin.Log.Info($"[trial] {status}");
+            if (!string.IsNullOrEmpty(status))
+            {
+                Plugin.Log.Info($"[trial] {status}");
+            }
             StatusChanged?.Invoke();
         }
     }

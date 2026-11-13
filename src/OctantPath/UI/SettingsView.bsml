@@ -1,10 +1,14 @@
-<vertical id='settings-root' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:noNamespaceSchemaLocation='https://raw.githubusercontent.com/monkeymanboy/BSML-Docs/gh-pages/BSMLSchema.xsd'
-          child-control-height='false' child-expand-height='false'>
+<!-- 項目が設定の画面の高さにあふれたので、めくれるようにする（2026-11-03） -->
+<scrollable-settings-container id='settings-root' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:noNamespaceSchemaLocation='https://raw.githubusercontent.com/monkeymanboy/BSML-Docs/gh-pages/BSMLSchema.xsd'>
   <list-setting text='~language-text' value='language' options='languages' apply-on-change='true' formatter='language-format' hover-hint='~language-hint'/>
   <slider-setting text='~panel-scale-text' value='panel-scale' min='~panel-scale-min' max='~panel-scale-max' increment='0.1' apply-on-change='true' formatter='scale-format'
                   hover-hint='~panel-scale-hint'/>
   <slider-setting text='~panel-opacity-text' value='panel-opacity' min='~panel-opacity-min' max='1' increment='0.05' apply-on-change='true' formatter='percent-format'
                   hover-hint='~panel-opacity-hint'/>
+  <!-- 推薦の近道（曲選択の上の板の下の段）の 3 枠。選べるのは OctantCompass の今の手札と「最近使ったもの」（2026-11-08） -->
+  <dropdown-list-setting id='shortcut-0' text='~shortcut-0-text' value='shortcut-0' options='shortcut-options' apply-on-change='true' formatter='shortcut-format' hover-hint='~shortcut-hint'/>
+  <dropdown-list-setting id='shortcut-1' text='~shortcut-1-text' value='shortcut-1' options='shortcut-options' apply-on-change='true' formatter='shortcut-format' hover-hint='~shortcut-hint'/>
+  <dropdown-list-setting id='shortcut-2' text='~shortcut-2-text' value='shortcut-2' options='shortcut-options' apply-on-change='true' formatter='shortcut-format' hover-hint='~shortcut-hint'/>
   <increment-setting text='~mix-draft-count-text' value='mix-draft-count' min='1' max='20' increment='1' integer-only='true' apply-on-change='true'
                      hover-hint='~mix-draft-count-hint'/>
   <bool-setting text='~auto-download-text' value='auto-download' apply-on-change='true' hover-hint='~auto-download-hint'/>
@@ -18,4 +22,4 @@
   <!-- 推薦のまとめ（OctantPath.Core.Recommendations.FeedbackSummary）を UserData/OctantPath/summaries に書き出す -->
   <button text='~export-text' on-click='export-click' hover-hint='~export-hint' preferred-width='60' preferred-height='8'/>
   <text text='~export-result' font-size='3' align='Center' word-wrapping='true' preferred-width='100' preferred-height='8'/>
-</vertical>
+</scrollable-settings-container>

@@ -116,7 +116,7 @@ namespace OctantPath.Core.Tests
             RequestId = "r-1",
             Candidates = new List<Candidate>
             {
-                new Candidate { Rank = 1, Hash = A.ToUpperInvariant(), Characteristic = "Standard", Difficulty = "Hard" },
+                new Candidate { Rank = 1, Hash = A.ToUpperInvariant(), Characteristic = "Standard", Difficulty = "Hard", Nps = 4.25 },
                 new Candidate { Rank = 2, Hash = "not-a-hash", Characteristic = "Standard", Difficulty = "Easy" },
                 new Candidate { Rank = 3, Hash = B, Characteristic = "Standard", Difficulty = "Expert" },
                 new Candidate { Rank = 4, Hash = D, Characteristic = "OneSaber", Difficulty = "Normal" },
@@ -144,7 +144,7 @@ namespace OctantPath.Core.Tests
                             ["diffs"] = new JArray
                             {
                                 new JObject { ["characteristic"] = "Standard", ["difficulty"] = "Expert", ["nps"] = 7.5, ["njs"] = 20 },
-                                new JObject { ["characteristic"] = "Standard", ["difficulty"] = "Hard", ["nps"] = 5.5, ["njs"] = 18 },
+                                new JObject { ["characteristic"] = "Standard", ["difficulty"] = "Hard", ["nps"] = -5.5, ["njs"] = 18 },
                             },
                         },
                     },
@@ -172,8 +172,9 @@ namespace OctantPath.Core.Tests
             Assert.Equal("https://cdn.example/a.jpg", a.Cover);
             Assert.Equal("https://cdn.example/a.mp3", a.Preview);
             Assert.Equal("https://cdn.example/a.zip", a.DownloadUrl);
-            Assert.Equal(5.5, a.Nps);
+            Assert.Equal(4.25, a.Nps);  // OctantCompass の値。BeatSaver の nps（負）は使わない
             Assert.Equal(18.0, a.Njs);
+            Assert.Null(items[2].Nps);  // OctantCompass が返さなければ出さない
             Assert.Null(items[1].Hash);
             Assert.Equal("not-a-hash", items[1].Title);
             Assert.NotNull(items[2].Map);

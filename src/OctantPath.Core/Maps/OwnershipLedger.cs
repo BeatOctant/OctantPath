@@ -24,6 +24,9 @@ namespace OctantPath.Core.Maps
         [JsonProperty("changedAt", NullValueHandling = NullValueHandling.Ignore)] public DateTime? ChangedAt { get; set; }
         [JsonProperty("keptFolder", NullValueHandling = NullValueHandling.Ignore)] public string KeptFolder { get; set; }
 
+        // 利用者が曲の詳細のランプを押して「残す」にした。次の起動で CustomLevels に移す（ゲーム中は SongCore が読んでいるので移さない）
+        [JsonProperty("keepRequested", DefaultValueHandling = DefaultValueHandling.Ignore)] public bool KeepRequested { get; set; }
+
         public IEnumerable<string> FrameIds() => Frames.Select(f => f.Frame);
     }
 
@@ -99,6 +102,23 @@ namespace OctantPath.Core.Maps
             map.State = MapStates.DeletedByUser;
             map.ChangedAt = DateTime.UtcNow;
             JsonFile.WriteAtomic(_path, JsonConvert.SerializeObject(ledger, Formatting.Indented));
+            return true;
+        }
+
+        // お試し中のマップの「残す」を付けるか外す。お試し中でない、台帳が読めないときは false
+        public bool SetKeepRequested(string hash, bool keep)
+        {
+            var ledger = Load();
+            var map = ledger?.Maps.Find(m => m.Hash == hash && m.State == MapStates.Trial);
+            if (map == null)
+            {
+                return false;
+            }
+            if (map.KeepRequested != keep)
+            {
+                map.KeepRequested = keep;
+                Save(ledger);
+            }
             return true;
         }
 

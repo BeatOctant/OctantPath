@@ -21,7 +21,7 @@ namespace OctantPath.Core.Recommendations
             Map = map;
             Version = map?.Version(Hash);
             var diff = Version?.Diffs?.FirstOrDefault(d => d.Characteristic == candidate.Characteristic && d.Difficulty == candidate.Difficulty);
-            Nps = diff?.Nps;
+            Nps = candidate.Nps;  // OctantCompass が返す、譜面から測った値（BeatSaver の nps は使わない）
             Njs = diff?.Njs;
         }
 

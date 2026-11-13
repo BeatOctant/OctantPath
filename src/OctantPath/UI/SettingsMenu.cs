@@ -19,6 +19,7 @@ namespace OctantPath.UI
         private readonly SettingsHolder _settings;
         private readonly OctantPathFolders _folders;
         private readonly Signals.SignalService _signals;
+        private readonly Connection.ConnectionService _connection;
         private string _exportResult = "";
 
         // 下見の曲数と前もって取る曲数の上限（推測で決めた値。下見は 3 倍を受け取る）。SettingsView.bsml の max と同じにする
@@ -31,8 +32,9 @@ namespace OctantPath.UI
         private const int MinTrialExpiryDays = 1;
         private const int MaxTrialExpiryDays = 60;
 
-        public SettingsMenu(BSMLSettings bsmlSettings, SettingsHolder settings, OctantPathFolders folders, Signals.SignalService signals)
+        public SettingsMenu(BSMLSettings bsmlSettings, SettingsHolder settings, OctantPathFolders folders, Signals.SignalService signals, Connection.ConnectionService connection)
         {
+            _connection = connection;
             _signals = signals;
             _bsmlSettings = bsmlSettings;
             _settings = settings;
@@ -42,11 +44,95 @@ namespace OctantPath.UI
         public void Initialize()
         {
             _bsmlSettings.AddSettingsMenu("OctantPath", "OctantPath.UI.SettingsView.bsml", this);
+            _connection.PresetsChanged += RefreshShortcutChoices;
         }
 
         public void Dispose()
         {
+            _connection.PresetsChanged -= RefreshShortcutChoices;
             _bsmlSettings.RemoveSettingsMenu(this);
+        }
+
+        // 推薦の近道の 3 枠（settings の shortcutPresets）。値は手札の id、空は「最近使ったもの」。
+        // 今の一覧にない id（OctantCompass の更新で消えたなど）も選んだまま残し、「今は使えません」と出す（板では最近使ったもので埋める）
+        [UIValue("shortcut-hint")] public string ShortcutHint => Lang.T("settings.shortcutHint");
+        [UIValue("shortcut-0-text")] public string Shortcut0Text => Lang.T("settings.shortcut", new { n = 1 });
+        [UIValue("shortcut-1-text")] public string Shortcut1Text => Lang.T("settings.shortcut", new { n = 2 });
+        [UIValue("shortcut-2-text")] public string Shortcut2Text => Lang.T("settings.shortcut", new { n = 3 });
+
+        [UIValue("shortcut-0")] public string Shortcut0 { get => ShortcutSlot(0); set => SaveShortcut(0, value); }
+        [UIValue("shortcut-1")] public string Shortcut1 { get => ShortcutSlot(1); set => SaveShortcut(1, value); }
+        [UIValue("shortcut-2")] public string Shortcut2 { get => ShortcutSlot(2); set => SaveShortcut(2, value); }
+
+        [UIComponent("shortcut-0")] private BeatSaberMarkupLanguage.Components.Settings.DropDownListSetting _shortcut0;
+        [UIComponent("shortcut-1")] private BeatSaberMarkupLanguage.Components.Settings.DropDownListSetting _shortcut1;
+        [UIComponent("shortcut-2")] private BeatSaberMarkupLanguage.Components.Settings.DropDownListSetting _shortcut2;
+
+        private List<Core.Presets.Preset> ShownPresets() => Core.Presets.PresetRules.Shown(_connection.Presets?.Presets, true);
+
+        // 選べる値: 「最近使ったもの」（空）、今の手札、枠に入っているが今の一覧にない手札
+        [UIValue("shortcut-options")]
+        public List<object> ShortcutOptions
+        {
+            get
+            {
+                var ids = new List<string> { "" };
+                ids.AddRange(ShownPresets().Select(p => p.Id));
+                ids.AddRange(Enumerable.Range(0, Core.UI.Shortcuts.Count).Select(ShortcutSlot).Where(id => !ids.Contains(id)));
+                return ids.Cast<object>().ToList();
+            }
+        }
+
+        [UIAction("shortcut-format")]
+        private string ShortcutFormat(object value)
+        {
+            var id = value as string;
+            if (string.IsNullOrEmpty(id))
+            {
+                return Lang.T("settings.shortcutRecent");
+            }
+            var preset = ShownPresets().FirstOrDefault(p => p.Id == id);
+            // 長い名前はプルダウンの幅からはみ出したので、… で切る（2026-11-08）
+            return Core.UI.PanelStatus.Clip(preset != null ? preset.Label : Lang.T("settings.shortcutMissing", new { id }), ShortcutOptionWidth);
+        }
+
+        // プルダウンの名前の幅の目安（半角 1、全角 2。推測で決めた値）
+        private const int ShortcutOptionWidth = 22;
+
+        private string ShortcutSlot(int index)
+        {
+            var slots = _settings.Current.ShortcutPresets;
+            return slots != null && index < slots.Count ? slots[index] ?? "" : "";
+        }
+
+        private void SaveShortcut(int index, string value)
+        {
+            var slots = Enumerable.Range(0, Core.UI.Shortcuts.Count).Select(ShortcutSlot).ToList();
+            slots[index] = value ?? "";
+            _settings.Save("shortcutPresets", new Newtonsoft.Json.Linq.JArray(slots));
+        }
+
+        // 手札の一覧が届いたり変わったりしたら、プルダウンの中身を作り直す
+        private void RefreshShortcutChoices()
+        {
+            var options = ShortcutOptions;
+            foreach (var dropdown in new[] { _shortcut0, _shortcut1, _shortcut2 })
+            {
+                if (dropdown == null)
+                {
+                    continue;
+                }
+                try
+                {
+                    dropdown.Values = options;
+                    dropdown.UpdateChoices();
+                    dropdown.ReceiveValue();
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.Warn($"[settings] could not refresh the shortcut choices: {ex.Message}");
+                }
+            }
         }
 
         // 設定ページの中身（SettingsView.bsml の一番外）。開いている間は浮かぶ板も出す（RecommendationTab.Tick）

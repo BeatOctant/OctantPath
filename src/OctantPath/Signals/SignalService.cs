@@ -93,6 +93,14 @@ namespace OctantPath.Signals
 
         public Dictionary<string, string> LastVotes() => _log?.Votes() ?? new Dictionary<string, string>();
 
+        // 正本に残したお気に入りと、ゲームの今のお気に入り（まだ正本に書いていないものも含める）
+        public HashSet<string> Liked()
+        {
+            var liked = _log?.Liked() ?? new HashSet<string>();
+            liked.UnionWith(_playerDataModel.playerData.favoritesLevelIds.Select(LevelIds.Hash).Where(h => h != null));
+            return liked;
+        }
+
         // 推薦のその後の出来事（shown、downloaded など）
         public void RecordRecommendation(string requestId, string preset, string hand, string hash, string characteristic, string difficulty, string stage)
         {

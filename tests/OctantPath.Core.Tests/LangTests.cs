@@ -213,7 +213,7 @@ namespace OctantPath.Core.Tests
         [Fact]
         public void FillEscapesTextForBsmlAttributes()
         {
-            Assert.Equal("<button hover-hint='Swap or drop songs that don&apos;t fit; if it looks good, “Create” downloads them and opens the playlist. Once a song is downloaded, its ↓ turns into a play button'/>",
+            Assert.Equal("<button hover-hint='Swap or drop songs that don&apos;t fit; if it looks good, “Create” downloads them and opens the playlist. ▶ plays just that song'/>",
                 Lang.Fill("<button hover-hint='{{draft.hint}}'/>"));
         }
 

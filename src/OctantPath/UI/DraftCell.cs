@@ -8,17 +8,18 @@ using OctantPath.Core.Languages;
 
 namespace OctantPath.UI
 {
-    // 下見の小窓の 1 行。カバー・曲名・行ごとの外す（✕）・入れ替え（⇔）・単体取得（↓）。取得が済んだ曲は ↓ の場所に遊ぶ（▶）を出す。どれも絵で出す。
+    // 下見の小窓の 1 行。カバー・曲名と、ボタンが 3 つ（外す ✕・入れ替える ⇔・遊ぶ ▶）。ボタンはどれも絵で出す。
+    // ▶ を押すと、まだ取っていない曲は取得してから遊ぶ。
     // 一覧の一番下には「曲を足す」の行を置く（AddRow。カバーの場所に ＋ の絵）。
-    // 結果画面の板も同じ行を使う（外す・入れ替え・取得は出さず、▶ で次の曲にする）
+    // 結果画面の板も同じ行を使う（外す・入れ替えは出さず、▶ で次の曲にする）
     internal sealed class DraftCell : NotifiableBase
     {
         // 行の中身（BSML の custom-list の雛形）。行の中ではレイアウトの部品を使わず、行の幅（小窓の中身の幅。OctantPath.Core.UI.Popups.Draft）と高さ（7.5）に対して
         // 位置を直に決める（レイアウトに任せると曲名の欄の幅が 0 になった）。曲名の字体（Teko）は行の高さが大きく、
         // 欄の高さに収まらないと「…」に切られる（行を高くしても曲によって切られた）。なので文字の欄は行の外まで高く取り、
-        // 見える位置は揃え（曲名は下揃え、作者は上揃え）と文字の大きさで、枠の上下から内側に収める。入れ替えと取得は OctantPath の絵（Icons）。見つからないときだけ、日本語の字体にある記号を出す（✕ は □ になった）
+        // 見える位置は揃え（曲名は下揃え、作者は上揃え）と文字の大きさで、枠の上下から内側に収める。入れ替えと遊ぶは OctantPath の絵（Icons）。見つからないときだけ、日本語の字体にある記号を出す（✕ は □ になった）
         // 左から: 試聴中の帯（縁から 0.5、幅 0.8）、帯の幅だけ空けてカバー（2.1 から 7）、2 空けて曲名と作者（11.1 から。左端をそろえる）。
-        // 右から: 取得か遊ぶ、入れ替え、外す（絵の中心の間は 10）。曲名と作者は外すの絵の 5 手前（右から 33.9）まで
+        // 右から: 遊ぶ、入れ替え、外す（絵の中心の間は 10）。曲名と作者は外すの絵の 5 手前（右から 33.9）まで
         public const string Template = @"<bg>
   <image id='glow' anchor-min-x='0' anchor-max-x='1' anchor-min-y='0' anchor-max-y='1' size-delta-x='-1' size-delta-y='0' image-color='#4C9AFF26'/>
   <image id='playing-bar' anchor-min-x='0' anchor-max-x='0' anchor-min-y='0' anchor-max-y='1' pivot-x='0' anchor-pos-x='0.5' size-delta-x='0.8' size-delta-y='0' image-color='#4C9AFF'/>
@@ -28,18 +29,20 @@ namespace OctantPath.UI
   <text id='subtitle-text' text='~subtitle' anchor-min-x='0' anchor-max-x='1' anchor-min-y='-1' anchor-max-y='0.44' size-delta-x='-45' size-delta-y='0' anchor-pos-x='-11.4' font-size='2.2' color='#BBBBBB' align='TopLeft' overflow-mode='Ellipsis' word-wrapping='false'/>
   <clickable-text id='discard-text' text='-' on-click='discard' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-21' size-delta-x='10' size-delta-y='7.5' font-size='5' align='Center' hover-hint='{{draft.discardHint}}'/>
   <clickable-text id='swap-text' text='⇔' on-click='swap' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-11' size-delta-x='10' size-delta-y='7.5' font-size='5' align='Center' hover-hint='{{draft.swapHint}}'/>
-  <clickable-text id='download-text' text='~download-text' on-click='download' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-1' size-delta-x='10' size-delta-y='7.5' font-size='5' align='Center' hover-hint='~download-hint'/>
+  <clickable-text id='play-text' text='▶' on-click='play' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-1' size-delta-x='10' size-delta-y='7.5' font-size='5' align='Center' hover-hint='~play-hint'/>
   <clickable-image id='discard-icon' on-click='discard' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-23.25' size-delta-x='5.5' size-delta-y='5.5' preserve-aspect='true' hover-hint='{{draft.discardHint}}'/>
   <clickable-image id='swap-icon' on-click='swap' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-13.25' size-delta-x='5.5' size-delta-y='5.5' preserve-aspect='true' hover-hint='{{draft.swapHint}}'/>
-  <clickable-image id='download-icon' on-click='download' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-3.25' size-delta-x='5.5' size-delta-y='5.5' preserve-aspect='true' hover-hint='~download-hint'/>
+  <clickable-image id='play-icon' on-click='play' anchor-min-x='1' anchor-max-x='1' anchor-min-y='0.5' anchor-max-y='0.5' pivot-x='1' anchor-pos-x='-3.25' size-delta-x='5.5' size-delta-y='5.5' preserve-aspect='true' hover-hint='~play-hint'/>
 </bg>";
+
+        // 結果画面の板の行。▶ しか出さないので、曲名と作者を ▶ の手前（右から 12）まで伸ばす（外す・入れ替えの場所を空けない）
+        public static readonly string PlayOnlyTemplate = Template.Replace("size-delta-x='-45' size-delta-y='0' anchor-pos-x='-11.4'", "size-delta-x='-23.1' size-delta-y='0' anchor-pos-x='-0.45'");
 
         // 行の操作。null の操作の絵は出さない（結果画面の板は Play だけ）
         public sealed class Actions
         {
             public Action<RecommendationItem> Swap;
             public Action<RecommendationItem> Discard;
-            public Action<RecommendationItem> Download;
             public Action<RecommendationItem> Play;
             // ▶ の説明の文の鍵（null なら下見の文）
             public string PlayHint;
@@ -55,13 +58,12 @@ namespace OctantPath.UI
         [UIComponent("add-icon")]
         private ImageView _addIcon;
 
-        // canEdit: 外す・入れ替えを押せるか。canDownload: 取得できるか（↓）。canPlay: 入っているか置いてあり、曲選択で選べるか（▶。↓ より優先）
-        public DraftCell(RecommendationItem item, bool playing, bool canEdit, bool canDownload, bool canPlay, Func<RecommendationItem, string> state, CoverCache covers, Actions actions)
+        // canEdit: ✕ と ⇔ を押せるか。canPlay: ▶ を押せるか
+        public DraftCell(RecommendationItem item, bool playing, bool canEdit, bool canPlay, Func<RecommendationItem, string> state, CoverCache covers, Actions actions)
         {
             Item = item;
             Playing = playing;
             CanEdit = canEdit;
-            CanDownload = canDownload;
             CanPlay = canPlay;
             _state = state;
             _covers = covers;
@@ -69,7 +71,7 @@ namespace OctantPath.UI
         }
 
         // 一覧の一番下の「曲を足す」の行。押すと行を選んだことになり、呼ぶ側が足す（RecommendationTab の draft-select）
-        public static DraftCell AddRow(CoverCache covers) => new DraftCell(null, false, false, false, false, _ => "", covers, null);
+        public static DraftCell AddRow(CoverCache covers) => new DraftCell(null, false, false, false, _ => "", covers, null);
 
         public bool IsAddRow => Item == null;
 
@@ -130,16 +132,10 @@ namespace OctantPath.UI
 
         public bool CanEdit { get; }
 
-        public bool CanDownload { get; }
-
         public bool CanPlay { get; }
 
-        // 遊べるときは ▶、取得できるときは ↓ を出す（枠のない記号なので、押せないときは消す）
-        [UIValue("download-text")]
-        public string DownloadText => CanPlay ? "▶" : CanDownload ? "↓" : "";
-
-        [UIValue("download-hint")]
-        public string DownloadHint => Lang.T(CanPlay ? _do?.PlayHint ?? "draft.playHint" : "draft.downloadHint");
+        [UIValue("play-hint")]
+        public string PlayHint => Lang.T(_do?.PlayHint ?? "draft.playHint");
 
         [UIComponent("discard-text")]
         private ClickableText _discardText;
@@ -150,14 +146,14 @@ namespace OctantPath.UI
         [UIComponent("swap-text")]
         private ClickableText _swapText;
 
-        [UIComponent("download-text")]
-        private ClickableText _downloadText;
+        [UIComponent("play-text")]
+        private ClickableText _playText;
 
         [UIComponent("swap-icon")]
         private ClickableImage _swapIcon;
 
-        [UIComponent("download-icon")]
-        private ClickableImage _downloadIcon;
+        [UIComponent("play-icon")]
+        private ClickableImage _playIcon;
 
         [UIAction("#post-parse")]
         private void PostParse()
@@ -165,8 +161,8 @@ namespace OctantPath.UI
             var actions = _do != null && !IsAddRow;
             UseIcon(_discardIcon, _discardText, Icons.Discard, actions && _do.Discard != null);
             UseIcon(_swapIcon, _swapText, Icons.Swap, actions && _do.Swap != null);
-            UseIcon(_downloadIcon, _downloadText, CanPlay ? Icons.Play : Icons.Download, actions && (CanPlay ? _do.Play != null : CanDownload && _do.Download != null));
-            foreach (var (text, shown) in new[] { (_discardText, actions && _do.Discard != null), (_swapText, actions && _do.Swap != null), (_downloadText, actions) })
+            UseIcon(_playIcon, _playText, Icons.Play, actions && CanPlay && _do.Play != null);
+            foreach (var (text, shown) in new[] { (_discardText, actions && _do.Discard != null), (_swapText, actions && _do.Swap != null), (_playText, actions && CanPlay && _do.Play != null) })
             {
                 if (text != null && !shown)
                 {
@@ -255,7 +251,7 @@ namespace OctantPath.UI
         // 取っている間の帯の不透明度（推測で決めた値）
         private const float LoadingBarAlpha = 0.35f;
 
-        // 絵が読めれば絵を出して記号を隠す。なければ記号のまま。押せないときは絵も出さない（記号の ↓ を空にするのと同じ）
+        // 絵が読めれば絵を出して記号を隠す。なければ記号のまま。押せないときは絵も記号も出さない
         private static void UseIcon(ClickableImage icon, ClickableText text, string name, bool visible)
         {
             if (icon == null)
@@ -279,7 +275,7 @@ namespace OctantPath.UI
         private static UnityEngine.Sprite _square;
 
         // 角のない白い四角の絵（Unity の白いテクスチャから作る）
-        private static UnityEngine.Sprite SquareSprite()
+        internal static UnityEngine.Sprite SquareSprite()
         {
             if (_square == null)
             {
@@ -319,21 +315,12 @@ namespace OctantPath.UI
             }
         }
 
-        // ↓ と ▶ は同じ場所。取得が済むと ▶ に変わる
-        [UIAction("download")]
-        private void Download()
+        [UIAction("play")]
+        private void Play()
         {
-            if (_do == null)
-            {
-                return;
-            }
-            if (CanPlay)
+            if (CanPlay && _do != null)
             {
                 _do.Play?.Invoke(Item);
-            }
-            else if (CanDownload)
-            {
-                _do.Download?.Invoke(Item);
             }
         }
     }

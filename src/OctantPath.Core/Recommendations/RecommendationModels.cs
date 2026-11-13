@@ -73,6 +73,9 @@ namespace OctantPath.Core.Recommendations
         [JsonProperty("hash")] public string Hash { get; set; }
         [JsonProperty("characteristic")] public string Characteristic { get; set; }
         [JsonProperty("difficulty")] public string Difficulty { get; set; }
+        // 譜面のファイルから測った NPS（DB の charts.parquet の nps）。BeatSaver の nps は負になる譜面があるので使わない。
+        // 色ノーツのない譜面は null
+        [JsonProperty("nps")] public double? Nps { get; set; }
         [JsonProperty("reason")] public CandidateReason Reason { get; set; }
     }
 

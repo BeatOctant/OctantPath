@@ -14,6 +14,16 @@ namespace OctantPath.Core.Trials
         Delete,
     }
 
+    // 残す理由（ランプの説明に使う）
+    public enum TrialKeepCause
+    {
+        None,
+        User,
+        Favorite,
+        Upvote,
+        Plays,
+    }
+
     // お試し中のマップを残すか消すか（実装構想の「シグナルとマップの入れ替え」、OctantPath 法 3.5）
     public sealed class TrialPolicy
     {
@@ -37,40 +47,56 @@ namespace OctantPath.Core.Trials
 
         public (TrialDecision Decision, string Reason) Decide(OwnedMap map)
         {
+            var (decision, _, reason) = Evaluate(map);
+            return (decision, reason);
+        }
+
+        public (TrialDecision Decision, TrialKeepCause Cause, string Reason) Evaluate(OwnedMap map) => Evaluate(map, true);
+
+        // 利用者の「残す」の印がなくても残るか（お気に入り・Upvote・遊んだ回数）。ランプは、これが真なら出さない
+        public bool KeepsWithoutRequest(OwnedMap map) => Evaluate(map, false).Decision == TrialDecision.Keep;
+
+        private (TrialDecision Decision, TrialKeepCause Cause, string Reason) Evaluate(OwnedMap map, bool honorRequest)
+        {
             if (map.State != MapStates.Trial)
             {
-                return (TrialDecision.Hold, "お試し中ではない");
+                return (TrialDecision.Hold, TrialKeepCause.None, "お試し中ではない");
             }
             var hash = map.Hash;
             _votes.TryGetValue(hash, out var vote);
 
+            // 利用者が残すと決めたマップは残す。好みには入れない（好意の印とは別。OctantSpecs open.md の U7）
+            if (honorRequest && map.KeepRequested)
+            {
+                return (TrialDecision.Keep, TrialKeepCause.User, "残すを押した");
+            }
             // 好意の印があるマップは消さない（OctantPath 法 3.5）
             if (_liked.Contains(hash))
             {
-                return (TrialDecision.Keep, "お気に入り");
+                return (TrialDecision.Keep, TrialKeepCause.Favorite, "お気に入り");
             }
             if (vote == SignalTypes.Upvote)
             {
-                return (TrialDecision.Keep, "Upvote");
+                return (TrialDecision.Keep, TrialKeepCause.Upvote, "Upvote");
             }
             if (vote == SignalTypes.Downvote)
             {
-                return (TrialDecision.Delete, "Downvote");
+                return (TrialDecision.Delete, TrialKeepCause.None, "Downvote");
             }
 
             // クリアと失敗を数える。途中終了とやり直しは数えない
             var plays = _plays.Count(e => e.Hash == hash && e.At >= map.AcquiredAt && (e.Result == PlayResults.Clear || e.Result == PlayResults.Fail));
             if (plays >= _keepMinPlays)
             {
-                return (TrialDecision.Keep, $"{plays} 回遊んだ");
+                return (TrialDecision.Keep, TrialKeepCause.Plays, $"{plays} 回遊んだ");
             }
 
             var days = LaunchDaysSince(map.AcquiredAt);
             if (days > _expiryLaunchDays)
             {
-                return (TrialDecision.Delete, $"お試しの期限（{_expiryLaunchDays} 起動日）を過ぎた");
+                return (TrialDecision.Delete, TrialKeepCause.None, $"お試しの期限（{_expiryLaunchDays} 起動日）を過ぎた");
             }
-            return (TrialDecision.Hold, $"{days} 起動日目、{plays} 回");
+            return (TrialDecision.Hold, TrialKeepCause.None, $"{days} 起動日目、{plays} 回");
         }
 
         // 取得した日も含めて、ゲームを起動した日を数える

@@ -76,7 +76,7 @@ MOD の設定は `UserData/OctantPath/settings.json` です。ほとんどは MO
 | `mixAutoAdvance` | 遊び終えたら次の曲を自動で選ぶか（曲選択の上の板の「自動で次へ」） |
 | `mixListOnPanel` | 板にミックスの一覧を出すか |
 | `difficultyCeiling` | 難しさの上限を使うか（板で切り替える） |
-| `recommendationPanelScale`・`panelOpacity` | 推薦の板の大きさと、背景の不透明度 |
+| `recommendationPanelScale`・`panelOpacity` | 推薦の板の大きさと不透明度（曲選択の板のマスと、結果画面の板の背景に同じ値を使う） |
 | `zipSource` | マップの取得元（`BeatSaver` か手元のフォルダ） |
 | `environmentName` | ペアリングで OctantCompass に伝える名前（空なら OctantPath が作る） |
 

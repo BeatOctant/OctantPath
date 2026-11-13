@@ -31,8 +31,10 @@
   "mixListOnPanel": false,
   "mixAutoAdvance": true,
   "difficultyCeiling": true,
+  "shortcutPresets": ["song", "for_you", ""],
+  "recentPresets": [],
   "recommendationPanelScale": 1.5,
-  "panelOpacity": 0.45,
+  "panelOpacity": 0.95,
   "language": "auto",
   "environmentName": ""
 }

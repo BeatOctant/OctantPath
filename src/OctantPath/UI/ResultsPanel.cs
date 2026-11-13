@@ -17,30 +17,44 @@ namespace OctantPath.UI
     // 見つからなければ押すのは人に任せるので、ゲームの版が変わっても壊れはしない
     internal sealed class ResultsPanel : NotifiableBase
     {
-        private static readonly UnityEngine.Vector2 PanelSize = new UnityEngine.Vector2(100f, 41f);
+        // 板の寸法は中身から決める（余った高さが下に空かないように）。行は下見より高くして、カバーと次の行の間を空ける。
+        // 説明の文は 1 行分の高さで上に揃える（折り返したときは下の余白にはみ出す）。上の余白は下より少し広くして、題が板の縁に寄らないようにする
+        // 余白（pad-*）は BSML が整数でしか読めない。小数を渡すと板の中身が丸ごと読めず、枠だけになった（2026-11-03）
+        private const int Pad = 2;
+        private const int PadTop = 3;
+        private const int PadBottom = 2;
+        private const float Gap = 0.5f;
+        private const float InnerWidth = 80f;
+        private const float TitleHeight = 5f;
+        private const float CellSize = 9f;
+        private const int VisibleCells = 3;
+        private const float ListHeight = VisibleCells * CellSize;
+        private const float DetailHeight = 4f;
+        private const float ProgressWidth = InnerWidth;
+
+        private static readonly UnityEngine.Vector2 PanelSize = new UnityEngine.Vector2(InnerWidth + 2 * Pad,
+            PadTop + PadBottom + TitleHeight + ListHeight + DetailHeight + Core.UI.Popups.ProgressHeight + 3 * Gap);
 
         private static readonly string Bsml = @"<bg>
-  <vertical child-control-height='true' child-expand-height='false' child-align='UpperCenter' spacing='0' pad='2'>
-    <text text='~title-text' font-size='3' align='Center' word-wrapping='true' preferred-width='96' preferred-height='7'/>
-    <text text='~notice-text' active='~notice-visible' font-size='3' color='#BBBBBB' align='Center' word-wrapping='true' preferred-width='96' preferred-height='" + Core.UI.Popup.F(3 * Core.UI.Popups.DraftCellSize) + @"'/>
-    <custom-list id='list' active='~list-visible' contents='cells' select-cell='select-cell' visible-cells='3' cell-size='" + Core.UI.Popup.F(Core.UI.Popups.DraftCellSize) + "' clickable-cells='true' list-width='96' list-height='" + Core.UI.Popup.F(3 * Core.UI.Popups.DraftCellSize) + "' preferred-width='96' preferred-height='" + Core.UI.Popup.F(3 * Core.UI.Popups.DraftCellSize) + @"'>
-      " + DraftCell.Template + @"
+  <vertical child-control-height='true' child-expand-height='false' child-align='UpperCenter' spacing='" + Core.UI.Popup.F(Gap) + "' pad-left='" + Core.UI.Popup.F(Pad) + "' pad-right='" + Core.UI.Popup.F(Pad) + "' pad-top='" + Core.UI.Popup.F(PadTop) + "' pad-bottom='" + Core.UI.Popup.F(PadBottom) + @"'>
+    <clickable-text text='~title-text' on-click='title-click' hover-hint='~title-hint' font-size='3' align='Center' word-wrapping='false' overflow-mode='Ellipsis' preferred-width='" + Core.UI.Popup.F(InnerWidth) + "' preferred-height='" + Core.UI.Popup.F(TitleHeight) + @"'/>
+    <text text='~notice-text' active='~notice-visible' font-size='3' color='#BBBBBB' align='Center' word-wrapping='true' preferred-width='" + Core.UI.Popup.F(InnerWidth) + "' preferred-height='" + Core.UI.Popup.F(ListHeight) + @"'/>
+    <custom-list id='list' active='~list-visible' contents='cells' select-cell='select-cell' visible-cells='" + VisibleCells + "' cell-size='" + Core.UI.Popup.F(CellSize) + "' clickable-cells='true' list-width='" + Core.UI.Popup.F(InnerWidth) + "' list-height='" + Core.UI.Popup.F(ListHeight) + "' preferred-width='" + Core.UI.Popup.F(InnerWidth) + "' preferred-height='" + Core.UI.Popup.F(ListHeight) + @"'>
+      " + DraftCell.PlayOnlyTemplate + @"
     </custom-list>
-    <text text='~detail-text' font-size='2.4' align='Center' word-wrapping='true' preferred-width='96' preferred-height='4'/>
+    <text text='~detail-text' font-size='2.4' color='#BBBBBB' align='Top' word-wrapping='true' preferred-width='" + Core.UI.Popup.F(InnerWidth) + "' preferred-height='" + Core.UI.Popup.F(DetailHeight) + @"'/>
     <horizontal id='progress-track' bg='round-rect-panel' bg-color='" + Core.UI.Popups.ProgressTrackColor + @"' preferred-width='" + Core.UI.Popup.F(ProgressWidth) + @"' preferred-height='" + Core.UI.Popup.F(Core.UI.Popups.ProgressHeight) + @"' child-align='MiddleLeft' child-expand-width='false' child-control-width='true'>
       <horizontal id='progress-fill' bg='round-rect-panel' bg-color='" + Core.UI.Popups.ProgressFillColor + @"' preferred-width='0' preferred-height='" + Core.UI.Popup.F(Core.UI.Popups.ProgressHeight) + @"'/>
     </horizontal>
   </vertical>
 </bg>";
 
-        private const float ProgressWidth = 96f;
 
         private readonly Action<RecommendationItem> _chosen;
+        private readonly Action<RecommendationItem> _previewed;
+        private readonly Action _again;
         private readonly Func<float> _scale;
         private readonly Func<double> _opacity;
-        private readonly Func<PanelBase?> _base;
-        private readonly Action<UnityEngine.Vector3, UnityEngine.Quaternion> _moved;
-        private readonly Func<bool> _movable;
         private readonly CoverCache _covers;
         private readonly PreviewPlayer _preview;
         private BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen _panel;
@@ -51,6 +65,8 @@ namespace OctantPath.UI
 
         // 試聴中か、次の曲に選んだ行。下見の小窓の試聴中の行と同じく、左端の帯と薄い塗りで出す（押したことが分かるように。2026-10-18）
         private RecommendationItem _chosenItem;
+        // いまの並びで試聴を記録した曲（同じ曲を何度押しても 1 回だけ記録する）
+        private readonly HashSet<RecommendationItem> _previewedItems = new HashSet<RecommendationItem>();
         // この板で試聴を流したか（板を隠すときに止める）
         private bool _previewing;
         private string _title = "";
@@ -81,17 +97,17 @@ namespace OctantPath.UI
 
         // scale は板の大きさ（推薦の板と同じ、設定の倍率をかけたもの）、opacity は背景の不透明度（設定の値）。
         // 置き場所は曲選択の板と同じ: baseOf はその板の下の縁（まだなければ null で、そのときは結果画面のすぐ上）。
-        // movable が真の間（曲選択の板の固定を外している間）はつまみを出し、動かしたら moved に下の縁を渡す
-        public ResultsPanel(CoverCache covers, PreviewPlayer preview, Action<RecommendationItem> chosen, Func<float> scale, Func<double> opacity, Func<PanelBase?> baseOf, Action<UnityEngine.Vector3, UnityEngine.Quaternion> moved, Func<bool> movable)
+        // 板は結果画面のすぐ上に固定する。曲選択の板とは結びつけない（曲選択の板を小さくしたので、そろえる意味がなくなった。2026-11-03）
+        // previewed は行を押して試聴を流したとき（並びを出すたびに 1 曲 1 回）、again は題を押したとき（別の曲に入れ替える）
+        public ResultsPanel(CoverCache covers, PreviewPlayer preview, Action<RecommendationItem> chosen, Action<RecommendationItem> previewed, Action again, Func<float> scale, Func<double> opacity)
         {
             _covers = covers;
             _preview = preview;
             _chosen = chosen;
+            _previewed = previewed;
+            _again = again;
             _scale = scale;
             _opacity = opacity;
-            _base = baseOf;
-            _moved = moved;
-            _movable = movable;
         }
 
         // いま出している（出そうとしている）おすすめが items か。次に遊び始めると空に替わる
@@ -99,6 +115,13 @@ namespace OctantPath.UI
 
         [UIValue("title-text")]
         public string TitleText => _title;
+
+        [UIValue("title-hint")]
+        public string TitleHint => Lang.T("next.againHint");
+
+        // 題を押した: 別の曲に入れ替える。ボタンは足さず、題を隠しボタンにする（曲選択の板の接続の段と同じ。2026-11-04）
+        [UIAction("title-click")]
+        private void TitleClick() => _again();
 
         [UIValue("detail-text")]
         public string DetailText => _detail;
@@ -118,6 +141,7 @@ namespace OctantPath.UI
             _title = title;
             _items = items ?? new List<RecommendationItem>();
             _chosenItem = null;
+            _previewedItems.Clear();
             // 前の結果画面で埋めている途中だった帯は残さない
             _smooth.Stop();
             _detail = detail ?? "";
@@ -243,10 +267,6 @@ namespace OctantPath.UI
             {
                 TickPreviewLoading();
             }
-            if (show && _panel.ShowHandle != _movable())
-            {
-                _panel.ShowHandle = _movable();
-            }
             ShowProgress();
         }
 
@@ -296,21 +316,16 @@ namespace OctantPath.UI
             }
             _panel.transform.localScale = UnityEngine.Vector3.one * _scale();
             PanelLook.MakeTranslucent(_panel, _opacity());
-            Place();
+            // 結果画面を離れている間は、結果画面の screen が null になる。置き直すのは出ている間だけ（出すときは Update が置き直す）。
+            // ここで落ちると、設定を保存した手札の選択（RememberPreset）まで止まり、種類の小窓のタイルが効かなかった（2026-11-12）
+            if (_panel.gameObject.activeSelf && _results.screen != null)
+            {
+                Place();
+            }
         }
 
-        // 曲選択の板と下の縁をそろえて置く。曲選択の板がまだなければ、結果画面のすぐ上
-        private (UnityEngine.Vector3 Position, UnityEngine.Quaternion Rotation, float Radius) Where()
-        {
-            var height = PanelSize.y * _scale();
-            var below = _base();
-            if (below == null)
-            {
-                return PanelLook.Above(_results.screen, height);
-            }
-            var b = below.Value;
-            return (b.Bottom + b.Rotation * UnityEngine.Vector3.up * (height / 2f), b.Rotation, b.Radius);
-        }
+        // 結果画面のすぐ上
+        private (UnityEngine.Vector3 Position, UnityEngine.Quaternion Rotation, float Radius) Where() => PanelLook.Above(_results.screen, PanelSize.y * _scale());
 
         private void Place()
         {
@@ -318,38 +333,35 @@ namespace OctantPath.UI
             _panel.transform.SetPositionAndRotation(position, rotation);
         }
 
-        private void HandleReleased(object sender, BeatSaberMarkupLanguage.FloatingScreen.FloatingScreenHandleEventArgs args)
-        {
-            var bottom = args.Position - args.Rotation * UnityEngine.Vector3.up * (PanelSize.y * _scale() / 2f);
-            _moved(bottom, args.Rotation);
-            Plugin.Log.Debug($"[results] moved to {args.Position}");
-        }
-
         public void Destroy()
         {
             if (_panel != null)
             {
-                _panel.HandleReleased -= HandleReleased;
                 UnityEngine.Object.Destroy(_panel.gameObject);
             }
         }
 
-        // 曲選択の板と同じ場所（下の縁をそろえる）に、同じ向き・同じ曲がり方で置く。持ち手は曲選択の板と同じつまみ
+        // 結果画面のすぐ上に、結果画面と同じ曲がり方で置く。持ち手は出さない（動かさない）
         private void Create()
         {
             var rect = (UnityEngine.RectTransform)_results.screen.transform;
             var panelScale = _scale();
             var (position, rotation, radius) = Where();
-            _panel = BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen.CreateFloatingScreen(PanelSize, true, position, rotation, radius, true);
+            _panel = BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen.CreateFloatingScreen(PanelSize, false, position, rotation, radius, true);
             _panel.name = "OctantPathResults";
-            _panel.HandleSide = BeatSaberMarkupLanguage.FloatingScreen.FloatingScreen.Side.Top;
-            PanelLook.PlaceKnob(_panel);
-            PanelLook.PaintKnob(_panel);
-            _panel.ShowHandle = false;
-            _panel.HandleReleased += HandleReleased;
             PanelLook.MakeTranslucent(_panel, _opacity());
             _panel.transform.localScale = UnityEngine.Vector3.one * panelScale;
-            BeatSaberMarkupLanguage.BSMLParser.Instance.Parse(Lang.Fill(Bsml), _panel.gameObject, this);
+            // 読めなかったら枠だけが残り続けるので、板ごと消す（2026-11-03 に余白の小数で起きた）
+            try
+            {
+                BeatSaberMarkupLanguage.BSMLParser.Instance.Parse(Lang.Fill(Bsml), _panel.gameObject, this);
+            }
+            catch
+            {
+                UnityEngine.Object.Destroy(_panel.gameObject);
+                _panel = null;
+                throw;
+            }
             PanelLook.Brighten(_progressTrack);
             PanelLook.Brighten(_progressFill);
             _panel.gameObject.SetActive(false);
@@ -364,7 +376,7 @@ namespace OctantPath.UI
                 return;
             }
             var actions = new DraftCell.Actions { Play = item => _chosen(item), PlayHint = "next.playHint" };
-            _cells = _items.Select(i => (object)new DraftCell(i, i == _chosenItem, false, false, true, State, _covers, actions)).ToList();
+            _cells = _items.Select(i => (object)new DraftCell(i, i == _chosenItem, false, true, State, _covers, actions)).ToList();
             _list.Data = _cells;
             _list.TableView.ReloadData();
             _list.TableView.ClearSelection();
@@ -389,6 +401,10 @@ namespace OctantPath.UI
             {
                 _preview.Play(url);
                 _previewing = true;
+                if (_previewedItems.Add(draftCell.Item))
+                {
+                    _previewed(draftCell.Item);
+                }
             }
             Mark(draftCell.Item, _preview.Progress(url).HasValue);
         }

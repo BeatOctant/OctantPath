@@ -55,6 +55,13 @@ namespace OctantPath.Core.Connection
             }
         }
 
+        // 状態の色（TextMeshPro の <color> に書く形）。設定の「OctantCompass との接続」の印と同じ色
+        public static string ToneColor(StatusTone tone) => tone == StatusTone.Ready ? "#5BD15B" : tone == StatusTone.Waiting ? "#FFC845" : "#FF6B6B";
+
+        // 浮かぶ板の 1 行: 状態の文（「接続済」など）に色を付けたもの。つなぐ先は OctantCompass だけで、つながらないときの文は
+        // OctantCompass の名前を含むので、前に「OctantCompass: 」は付けない（2026-11-03）。長い状態は 1 行に収まるよう切る
+        public static string Colored(ConnectionStatus status) => $"<color={ToneColor(Tone(status))}>{UI.PanelStatus.Clip(Describe(status), UI.PanelStatus.ConnectionWidth)}</color>";
+
         private static string ApiMismatch(string host, string ours)
         {
             if (host != null && ContractVersion.TryParse(host, out var h) && h.Major != ContractVersion.Api.Major)
